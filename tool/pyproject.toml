@@ -1,0 +1,6 @@
+[project]
+name = "ace-archive-keeper"
+version = "0.1.0"
+description = "A tool for participants to host backups of Ace Archive"
+requires-python = ">=3.13"
+dependencies = []
