@@ -1,0 +1,6 @@
+name = "acearchive-keeper"
+main = "build/index.js"
+compatibility_date = "2025-11-06"
+
+[build]
+command = "cargo install -q worker-build && worker-build --release"
