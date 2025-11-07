@@ -60,17 +60,17 @@ async fn post_backup(
             "#,
         )
         .bind(&[
-            JsValue::from_str(&body.keeper_id),
-            JsValue::from_str(&body.checksum),
-            // The alternative is to use `JsValue::from_f64`, except an f64 cannot losslessly hold
-            // a u64.
-            JsValue::bigint_from_str(&body.size.to_string()),
+            body.keeper_id.into(),
+            body.checksum.into(),
+            // An f64 can only losslessly represent integers up to 2^53. In context, that's 8 PiB
+            // (pebibytes). We don't need to worry about it.
+            (body.size as f64).into(),
             match &body.email {
-                Some(email) => JsValue::from_str(email),
+                Some(email) => email.into(),
                 None => JsValue::null(),
             },
             match body.email {
-                Some(_) => JsValue::from_str("email"),
+                Some(_) => "email".into(),
                 None => JsValue::null(),
             },
         ])
