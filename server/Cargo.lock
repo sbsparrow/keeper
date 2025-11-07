@@ -39,6 +39,8 @@ dependencies = [
  "percent-encoding",
  "pin-project-lite",
  "serde_core",
+ "serde_json",
+ "serde_path_to_error",
  "sync_wrapper",
  "tower",
  "tower-layer",
@@ -347,6 +349,7 @@ name = "keeper-worker"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "serde",
  "tower-service",
  "worker",
  "worker-macros",
@@ -524,6 +527,17 @@ dependencies = [
  "itoa",
  "memchr",
  "ryu",
+ "serde",
+ "serde_core",
+]
+
+[[package]]
+name = "serde_path_to_error"
+version = "0.1.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a30a8abed938137c7183c173848e3c9b3517f5e038226849a4ecc9b21a4b4e2a"
+dependencies = [
+ "itoa",
  "serde",
  "serde_core",
 ]
