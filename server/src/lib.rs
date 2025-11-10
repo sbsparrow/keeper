@@ -12,6 +12,7 @@ use tower_service::Service;
 use worker::{wasm_bindgen::JsValue, *};
 
 const CHECKSUM_BYTES: usize = 32;
+const KEEPER_ID_LEN: usize = 6;
 
 struct AppState {
     pub db: D1Database,
@@ -47,6 +48,14 @@ struct BackupRequest {
     email: Option<String>,
 }
 
+fn is_valid_keeper_id(keeper_id: &str) -> bool {
+    if keeper_id.len() != KEEPER_ID_LEN {
+        return false;
+    }
+
+    keeper_id.parse::<u32>().is_ok()
+}
+
 fn is_valid_checksum(checksum: &str) -> bool {
     if checksum.len() != CHECKSUM_BYTES * 2 {
         return false;
@@ -61,6 +70,10 @@ async fn post_backup(
     State(state): State<Arc<AppState>>,
     Json(body): Json<BackupRequest>,
 ) -> std::result::Result<NoContent, StatusCode> {
+    if !is_valid_keeper_id(&body.keeper_id) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
     if !is_valid_checksum(&body.checksum) {
         return Err(StatusCode::BAD_REQUEST);
     }
