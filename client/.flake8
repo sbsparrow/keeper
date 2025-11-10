@@ -1,0 +1,5 @@
+[flake8]
+extend-ignore = I100, SCS109, E501, G004
+indent-size = 4
+max-line-length = 90
+max-doc-length = 120
