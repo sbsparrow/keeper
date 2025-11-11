@@ -222,12 +222,6 @@ def list_archive(archive_url: str, artifacts_per_page: int = 100) -> list[AceArt
         try:
             response.raise_for_status()
             json_response = response.json()
-            try:
-                params.update({"cursor": json_response["next_cursor"]})
-                logger.debug(f"Next cursor is: {json_response.get("next_cursor", "")}")
-            except KeyError:
-                logger.info("next_cursor not found in response. This is the last page.")
-                break
 
             logger.info(f"Got {len(json_response.get("items"))} artifacts on this page.")
             for artifact in json_response.get("items"):
@@ -235,6 +229,14 @@ def list_archive(archive_url: str, artifacts_per_page: int = 100) -> list[AceArt
                     artifacts.append(AceArtifact(**artifact))
                 except TypeError:
                     logger.error(f"""Input validation failed for artifact: {artifact}. API returned something that doesn't look like an ace-archive artifact. Skipping backup of this artifact.""")
+
+            try:
+                params.update({"cursor": json_response["next_cursor"]})
+                logger.debug(f"Next cursor is: {json_response.get("next_cursor", "")}")
+            except KeyError:
+                logger.info("next_cursor not found in response. This is the last page.")
+                break
+
         except HTTPError as e:
             logger.critical(f"""Error getting artifacts from ace-archive api. {e.response.status_code} recived from URL: {e.request.url}. This is likely an issue with the API or your connection to it. Is the source url set correctly?""")
         except JSONDecodeError:
