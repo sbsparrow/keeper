@@ -258,13 +258,17 @@ def setup_logging(logger: logging.Logger,
     :type stderr_logging: bool
     """
     handlers = []
+    utcz_formatter = logging.Formatter("%(asctime)s,%(msecs)03dZ %(name)-14s %(levelname)-8s %(message)s",
+                                       datefmt="%Y-%m-%dT%H:%M:%S")
 
     if log_file:
         file_handler = logging.FileHandler(log_file, 'a')
+        file_handler.setFormatter(utcz_formatter)
         handlers.append(file_handler)
 
     if not surpress_stderr:
         stderr_handler = logging.StreamHandler(stream=sys.stderr)
+        stderr_handler.setFormatter(utcz_formatter)
         handlers.append(stderr_handler)
 
     if log_verbosity == 0:
