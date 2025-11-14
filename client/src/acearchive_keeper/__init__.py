@@ -5,12 +5,12 @@ A tool for participants (called "keepers") to host backups of Ace Archive.
 import argparse
 from dataclasses import asdict, dataclass
 from hashlib import sha256
-import json
 import logging
 import os
 import sys
 from typing import NoReturn
 
+import jcs
 import requests
 from requests.exceptions import HTTPError, JSONDecodeError
 
@@ -119,7 +119,7 @@ class AceArtifact():
         :return: Artifact metadata
         :rtype: str
         """
-        return json.dumps(asdict(self)).encode("utf8")
+        return jcs.canonicalize(asdict(self))
 
     def get_hash(self) -> str:
         """Generate a sha256 hash of this artifact's metadata.
@@ -324,6 +324,7 @@ def main_cli() -> NoReturn:
 
     archive_hash = sha256()
     ace_artifacts = list_archive(archive_url=args.src_url)
+    ace_artifacts.sort(key=lambda x: x.id)
     for artifact in ace_artifacts:
         artifact.backup(backup_root=args.destination)
         logger.info(f"Adding {artifact.id}'s metadata hash to the running archive hash.")
