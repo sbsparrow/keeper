@@ -13,6 +13,7 @@ use uuid::Uuid;
 use worker::{wasm_bindgen::JsValue, *};
 
 const CHECKSUM_BYTES: usize = 32;
+const CURRENT_FORMAT_VERSION: u32 = 1;
 
 struct AppState {
     pub db: D1Database,
@@ -42,10 +43,15 @@ async fn fetch(
 
 #[derive(Debug, Deserialize)]
 struct BackupRequest {
+    format_version: u32,
     keeper_id: String,
     checksum: String,
     size: u64,
     email: Option<String>,
+}
+
+fn is_valid_format_version(format_version: u32) -> bool {
+    format_version > 0 && format_version <= CURRENT_FORMAT_VERSION
 }
 
 fn is_valid_keeper_id(keeper_id: &str) -> bool {
@@ -69,6 +75,11 @@ async fn post_backup(
     State(state): State<Arc<AppState>>,
     Json(body): Json<BackupRequest>,
 ) -> std::result::Result<NoContent, StatusCode> {
+    if !is_valid_format_version(body.format_version) {
+        console_error!("Unexpected backup format version: {}", &body.format_version);
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
     if !is_valid_keeper_id(&body.keeper_id) {
         console_error!("Keeper ID is not a valid UUID: {}", &body.keeper_id);
         return Err(StatusCode::BAD_REQUEST);
@@ -86,11 +97,12 @@ async fn post_backup(
         .db
         .prepare(
             r#"
-            INSERT INTO backups (keeper_id, checksum, size, contact, contact_type)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO backups (format_version, keeper_id, checksum, size, contact, contact_type)
+            VALUES (?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&[
+            body.format_version.into(),
             body.keeper_id.clone().into(),
             body.checksum.to_ascii_lowercase().into(),
             // An f64 can only losslessly represent integers up to 2^53. In context, that's 8 PiB
