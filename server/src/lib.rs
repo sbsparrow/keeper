@@ -1,3 +1,7 @@
+mod api;
+mod checksum;
+mod validate;
+
 use std::{fmt, sync::Arc};
 
 use axum::{
@@ -9,11 +13,9 @@ use axum::{
 };
 use serde::Deserialize;
 use tower_service::Service;
-use uuid::Uuid;
 use worker::{wasm_bindgen::JsValue, *};
 
-const CHECKSUM_BYTES: usize = 32;
-const CURRENT_FORMAT_VERSION: u32 = 1;
+use crate::validate::{is_valid_checksum, is_valid_format_version, is_valid_keeper_id};
 
 struct AppState {
     pub db: D1Database,
@@ -48,25 +50,6 @@ struct BackupRequest {
     checksum: String,
     size: u64,
     email: Option<String>,
-}
-
-fn is_valid_format_version(format_version: u32) -> bool {
-    format_version > 0 && format_version <= CURRENT_FORMAT_VERSION
-}
-
-fn is_valid_keeper_id(keeper_id: &str) -> bool {
-    match Uuid::try_parse(keeper_id) {
-        Ok(uuid) => !uuid.is_nil(),
-        Err(_) => false,
-    }
-}
-
-fn is_valid_checksum(checksum: &str) -> bool {
-    if checksum.len() != CHECKSUM_BYTES * 2 {
-        return false;
-    }
-
-    checksum.chars().all(|c| c.is_ascii_hexdigit())
 }
 
 #[axum::debug_handler]
