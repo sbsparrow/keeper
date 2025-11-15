@@ -107,6 +107,7 @@ class AceArtifact():
     from_year: int
     to_year: int | None = None  # Some artifacts are missing this field
     description: str | None = None  # And this one
+    size: int | None = None  # Calculated after backup
 
     def __post_init__(self) -> NoReturn:
         """Convert dicts for files & links into ArtifactFile & LinkModel respectively."""
@@ -164,6 +165,7 @@ class AceArtifact():
         This artifact will be backed up to a subdirectory of backup_root.
         :type backup_root: str
         """
+        artifact_size = 0
         logger.info(f"Starting backup for {self.id}")
         backup_path = f"{backup_root}/{self.id}"
         if not os.path.exists(backup_path):
@@ -183,6 +185,7 @@ class AceArtifact():
                 on_disk_hash = read_on_disk_hash(file_path)
                 if archive_file.hash == on_disk_hash:
                     msg = f"""Skipping file download for {self.id}{archive_file.filename}. On-disk of hash of file {file_path} matches archive hash: {archive_file.hash}"""
+                    artifact_size += os.path.getsize(file_path)
                     logger.info(msg)
                     continue  # backup not needed; skip to loop iteration; i.e. next file
             except FileNotFoundError:
@@ -198,10 +201,13 @@ class AceArtifact():
 
                 with open(file_path, "wb") as file:
                     archive_file.fetch_file(file)
+                    # bytes written to the file as the file size, but file size is what we want.
+                artifact_size += os.path.getsize(file_path)
 
             except (FileNotFoundError, HTTPError, FileExistsError) as e:
                 logger.error(f"Could not write artifact to {file_path}: {e}. Skipping this file.")
 
+        self.size = artifact_size
         metadata_path = f"{backup_path}/metadata.json"
         logger.info(f"Writing metadata.json for artifact {self.id} to {metadata_path}.")
         self.write_metadata(metadata_path)
@@ -326,6 +332,7 @@ def main_cli() -> NoReturn:
         logger.info(f"Creating backup dir: {args.destination}")
         os.mkdir(args.destination)
 
+    archive_size = 0
     archive_hash = sha256()
     ace_artifacts = list_archive(archive_url=args.src_url)
     ace_artifacts.sort(key=lambda x: x.id)
@@ -333,6 +340,7 @@ def main_cli() -> NoReturn:
         artifact.backup(backup_root=args.destination)
         logger.info(f"Adding {artifact.id}'s metadata hash to the running archive hash.")
         archive_hash.update(artifact.get_hash().encode("utf-8"))
+        archive_size += artifact.size
     logger.info("Archive backup completed.")
     logger.info(f"Archive hash: {archive_hash.hexdigest()}")
 

@@ -1,6 +1,6 @@
 [project]
 name = "acearchive-keeper"
-version = "0.1.4"
+version = "0.1.5"
 description = "A tool for participants to host backups of Ace Archive"
 classifiers = ["Private :: Do Not Upload"]
 authors = [{"name" = "sbsparrow", "email" = "sbsparrow@proton.me"}]
