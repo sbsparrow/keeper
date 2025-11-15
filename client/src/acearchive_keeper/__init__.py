@@ -7,6 +7,7 @@ import configparser
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
+import json
 import logging
 import os
 import sys
@@ -80,8 +81,8 @@ class ArtifactFile():
         try:
             with requests.get(self.url, stream=True) as response:
                 response.raise_for_status()
-            for chunk in response.iter_content(chunk_size=chunk_size):
-                bytes_written += file.write(chunk)
+                for chunk in response.iter_content(chunk_size=chunk_size):
+                    bytes_written += file.write(chunk)
         except HTTPError as e:
             logger.error(f"Failed to fetch file. {e.response.status_code} recived from URL: {e.request.url}")
             raise
@@ -120,15 +121,18 @@ class AceArtifact():
         self.files = files
         self.links = links
 
-    def metadata(self) -> str:
+    def metadata(self, format: int = 1) -> dict:
         """Generate metadata for this artifact.
 
-        Generated metadata is the same as the artifact api-response.
-
         :return: Artifact metadata
-        :rtype: str
+        :rtype: dict
         """
-        return jcs.canonicalize(asdict(self))
+        if format != 1:
+            logger.warning(f"Unknown metadata format version: {format}. Using format version 1 instead.")
+        metadata = asdict(self)
+        for fields in ["size", "url_aliases"]:
+            metadata.pop(fields)
+        return metadata
 
     def get_hash(self) -> str:
         """Generate a sha256 hash of this artifact's metadata.
@@ -137,7 +141,7 @@ class AceArtifact():
         :rtype: str
         """
         item_sha = sha256()
-        item_sha.update(self.metadata())
+        item_sha.update(jcs.canonicalize(self.metadata()))
         logger.debug(f"{self.id} : {item_sha.hexdigest()}")
         return item_sha.hexdigest()
 
@@ -150,7 +154,7 @@ class AceArtifact():
         with open(metadata_path, "wb+") as metadata_file:
             if metadata_file.read() != self.metadata():
                 logger.info(f"Writting updated metadata for {self.id}")
-                metadata_file.write(self.metadata())
+                metadata_file.write(jcs.canonicalize(self.metadata()))
             else:
                 logger.info(f"On-disk metadata for {self.id} already up-to-date.")
 
@@ -171,7 +175,7 @@ class AceArtifact():
         """
         artifact_size = 0
         logger.info(f"Starting backup for {self.id}")
-        backup_path = f"{backup_root}/{self.id}"
+        backup_path = os.path.join(backup_root, self.id)
         if not os.path.exists(backup_path):
             logger.info(f"Creating artifact directory: {backup_path}")
             os.mkdir(backup_path)
@@ -212,15 +216,26 @@ class AceArtifact():
                 logger.error(f"Could not write artifact to {file_path}: {e}. Skipping this file.")
 
         self.size = artifact_size
-        metadata_path = f"{backup_path}/metadata.json"
+        metadata_path = os.path.join(backup_path, "metadata.json")
         logger.info(f"Writing metadata.json for artifact {self.id} to {metadata_path}.")
         self.write_metadata(metadata_path)
+
+
+def get_server_checksum(checksum_api_url: str):
+    try:
+        with requests.get(url=checksum_api_url) as response:
+            response.raise_for_status()
+            json_response = response.json()
+            return json_response.get('format_version'), json_response.get('checksum')
+    except HTTPError as e:
+        logger.critical(f"""Error posting to ace-archive backups api. {e.response.status_code} recived from URL: {e.request.url}.""")
+        return None, None
 
 
 def format_archive_metadata(keeper_id: str,
                             archive_checksum: str,
                             size: int,
-                            email: str | None) -> bytes:
+                            email: str | None) -> bytes | str:
     """Format the archive metadata as canonicallized json.
 
     :param keeper_id: The keeper ID
@@ -238,6 +253,7 @@ def format_archive_metadata(keeper_id: str,
     machine_tz = timezone(timedelta(seconds=utc_offset))
     now = datetime.now(tz=machine_tz)
     uncanonicalized_metadata = {
+        "format_version": 1,
         "keeper_id": keeper_id,
         "checksum": archive_checksum,
         "size": size,
@@ -245,7 +261,7 @@ def format_archive_metadata(keeper_id: str,
         "created_at": now.strftime('%Y-%m-%dT%H:%M:%SZ')
     }
     if email is None:
-        uncanonicalized_metadata.pop(email)
+        uncanonicalized_metadata.pop('email')
     return jcs.canonicalize(uncanonicalized_metadata)
 
 
@@ -393,6 +409,11 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--config-file", type=str, default="keeper.conf",
                         help="""Config file to read the keeper ID and optional keeper email address from,
                         Defaults to 'keeper.conf'. This Should not generally be changed.""")
+    # Hidden arguments for internal testing only.
+    parser.add_argument("--backup-api-url", type=str, default=f"{ACEARCHIVE_API_URI}/backups",
+                        help=argparse.SUPPRESS)
+    parser.add_argument("--checksum-api-url", type=str, default=f"{ACEARCHIVE_API_URI}/checksum",
+                        help=argparse.SUPPRESS)
     return parser.parse_args()
 
 
@@ -406,27 +427,37 @@ def main_cli() -> NoReturn:
                   log_verbosity=args.verbose,
                   surpress_stderr=args.quiet)
 
-    logger.info(f"Using backup dir: {args.destination}")
-    if not os.path.exists(args.destination):
-        logger.info(f"Creating backup dir: {args.destination}")
-        os.mkdir(args.destination)
+    server_checksum_format_version, server_checksum = get_server_checksum(checksum_api_url=args.checksum_api_url)
+
+    backup_manifest = os.path.join(args.destination, "backup.json")
+    try:
+        with open(backup_manifest) as prior_manifest:
+            manifest_data = json.loads(prior_manifest.read())
+            checksum = manifest_data.get("checksum")
+            if (server_checksum_format_version and server_checksum) is not None:
+                manifest_data = json.loads(prior_manifest.read())
+                checksum = manifest_data.get("checksum")
+                if checksum == server_checksum:
+                    logger.info("On-disk checksum of last backup matches server's checksum. Skipping backup run.")
+                    sys.exit(0)
+    except (FileNotFoundError):
+        logger.info("Previous backup manifest not found. Unable to compare checksums.")
+    except (json.JSONDecodeError, KeyError):
+        logger.info("Previous backup manifest exists but checksum can not be read from it. Unable to compare checksums.")
 
     archive_size = 0
-    archive_hash = sha256()
     ace_artifacts = list_archive(archive_url=args.src_url)
     ace_artifacts.sort(key=lambda x: x.id)
+    artifacts_medatata = []
     for artifact in ace_artifacts:
         artifact.backup(backup_root=args.destination)
-        logger.info(f"Adding {artifact.id}'s metadata hash to the running archive hash.")
-        archive_hash.update(artifact.get_hash().encode("utf-8"))
+        artifacts_medatata.append(artifact.metadata())
         archive_size += artifact.size
     logger.info("Archive backup completed.")
-    logger.info(f"Archive hash: {archive_hash.hexdigest()}")
 
-    archive_metadata = format_archive_metadata(
-        keeper_id, keeper_email, archive_size, keeper_email
-    )
-    with open(f"{args.destination}/backup.json", 'wb+') as manifest:
+    artifacts_checksum = sha256().update(jcs.canonicalize(artifacts_medatata)).hexidigest()
+    archive_metadata = format_archive_metadata(keeper_id, artifacts_checksum, archive_size, keeper_email)
+    with open(os.path.join(args.destination, "backup.json"), 'wb+') as manifest:
         manifest.write(archive_metadata)
 
 
