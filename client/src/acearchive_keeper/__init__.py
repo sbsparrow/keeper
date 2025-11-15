@@ -8,7 +8,7 @@ from hashlib import sha256
 import logging
 import os
 import sys
-from typing import NoReturn
+from typing import BinaryIO, NoReturn
 
 import jcs
 import requests
@@ -65,19 +65,23 @@ class ArtifactFile():
     hidden: bool
     lang: str | None = None  # Some files are missing this field
 
-    def fetch_content(self) -> bytes:
-        """Download the content of this file from the ace-archive api.
+    def fetch_file(self, file: BinaryIO) -> int:
+        """Download this file from the ace-archive api and write to file.
 
-        :return: bytes
-        :rtype: The byte content of this file downloaded from the ace-archive.
+        :return: The size of the file in bytes.
+        :rtype: int
         """
+        chunk_size = 128 * 1024
+        bytes_written = 0
         try:
-            response = requests.get(self.url)
-            response.raise_for_status()
+            with requests.get(self.url, stream=True) as response:
+                response.raise_for_status()
+            for chunk in response.iter_content(chunk_size=chunk_size):
+                bytes_written += file.write(chunk)
         except HTTPError as e:
             logger.error(f"Failed to fetch file. {e.response.status_code} recived from URL: {e.request.url}")
             raise
-        return response.content
+        return bytes_written
 
 
 @dataclass
@@ -193,7 +197,7 @@ class AceArtifact():
                     os.mkdir(os.path.dirname(file_path))
 
                 with open(file_path, "wb") as file:
-                    file.write(archive_file.fetch_content())
+                    archive_file.fetch_file(file)
 
             except (FileNotFoundError, HTTPError, FileExistsError) as e:
                 logger.error(f"Could not write artifact to {file_path}: {e}. Skipping this file.")
