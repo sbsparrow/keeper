@@ -137,6 +137,8 @@ async fn get_checksum() -> std::result::Result<Json<ChecksumResponse>, StatusCod
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
+    console_log!("Computed backup checksum: {}", &checksum);
+
     let response = ChecksumResponse {
         format_version: validate::CURRENT_FORMAT_VERSION,
         checksum,

@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use worker::{Fetch, Url};
+use worker::{Fetch, Url, console_log};
 
 const API_URL: &str = "https://api.acearchive.lgbt/v0";
 const ARTIFACTS_PAGE_SIZE: usize = 50;
@@ -75,6 +75,8 @@ pub async fn fetch_all_artifacts() -> worker::Result<Vec<ArtifactResponse>> {
             break;
         }
     }
+
+    console_log!("Fetched {} artifacts from upstream.", all_artifacts.len());
 
     Ok(all_artifacts)
 }

@@ -83,7 +83,7 @@ impl From<crate::api::ArtifactResponse> for ArtifactMetadata {
     }
 }
 
-fn compute_canonicalized_checksum<T: Serialize>(object: T) -> worker::Result<String> {
+fn compute_canonicalized_json_checksum<T: Serialize>(object: T) -> worker::Result<String> {
     serde_json_canonicalizer::to_vec(&object)
         .map_err(|e| worker::Error::from(JsValue::from_str(&format!("Serialization error: {}", e))))
         .map(|canonicalized_json| {
@@ -113,5 +113,5 @@ pub fn compute_backup_checksum(api_response: &[ArtifactResponse]) -> worker::Res
 
     sorted_metadata.sort_by_key(|artifact| artifact.id.clone());
 
-    compute_canonicalized_checksum(&sorted_metadata)
+    compute_canonicalized_json_checksum(&sorted_metadata)
 }
