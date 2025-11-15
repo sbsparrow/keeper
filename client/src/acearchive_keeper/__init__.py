@@ -3,12 +3,16 @@
 A tool for participants (called "keepers") to host backups of Ace Archive.
 """
 import argparse
+import configparser
 from dataclasses import asdict, dataclass
+from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 import logging
 import os
 import sys
+from time import localtime
 from typing import BinaryIO, NoReturn
+from uuid import uuid4
 
 import jcs
 import requests
@@ -213,6 +217,38 @@ class AceArtifact():
         self.write_metadata(metadata_path)
 
 
+def format_archive_metadata(keeper_id: str,
+                            archive_checksum: str,
+                            size: int,
+                            email: str | None) -> bytes:
+    """Format the archive metadata as canonicallized json.
+
+    :param keeper_id: The keeper ID
+    :type keeper_id: str
+    :param archive_checksum: The checksum of the checksum of all artifacts, sorted by ID
+    :type archive_checksum: str
+    :param size: The total size of all artifact files in the archive
+    :type size: int
+    :param email: The keeper email address | None, optional
+    :type email: str
+    :return: UTF-8 encoded canonicallized json
+    :rtype: bytes
+    """
+    utc_offset = localtime().tm_gmtoff
+    machine_tz = timezone(timedelta(seconds=utc_offset))
+    now = datetime.now(tz=machine_tz)
+    uncanonicalized_metadata = {
+        "keeper_id": keeper_id,
+        "checksum": archive_checksum,
+        "size": size,
+        "email": email,
+        "created_at": now.strftime('%Y-%m-%dT%H:%M:%SZ')
+    }
+    if email is None:
+        uncanonicalized_metadata.pop(email)
+    return jcs.canonicalize(uncanonicalized_metadata)
+
+
 def list_archive(archive_url: str, artifacts_per_page: int = 100) -> list[AceArtifact]:
     """Read all artifacts from the ace-archive api and returns them as a list of AceArtifacts.
 
@@ -297,6 +333,42 @@ def setup_logging(logger: logging.Logger,
     return logger
 
 
+def configure(config_file: str, keeper_email: str | None = None) -> tuple[str, str | None]:
+    """Update the keeper config file if needed and return the relavent keep info.
+
+    :param config_file: The config file path to read & write. Will be created if absent.
+    :type config_file: str
+    :param keeper_email: Optionally update the email address in the config file, defaults to None
+    :type keeper_email: str | None, optional
+    :return: Tuple of keeper ID and keeper email adress. Email can be None.
+    :rtype: tuple[str, str | None]
+    """
+    writeback_config = False
+    config = configparser.ConfigParser()
+    with open(config_file, 'w+') as fh:
+        config.read_file(fh)
+        if not config.has_section('Keeper'):
+            config.add_section('Keeper')
+        try:
+            keeper_id = config.get('Keeper', 'ID')
+        except configparser.NoOptionError:
+            keeper_id = uuid4().hex
+            config.set('Keeper', 'ID', keeper_id)
+            writeback_config = True
+        try:
+            if keeper_email != config.get('Keeper', 'email'):
+                config.set('Keeper', 'email', keeper_email)
+                writeback_config = True
+        except configparser.NoOptionError:
+            if keeper_email:
+                config.set('Keeper', 'email', keeper_email)
+                writeback_config = True
+
+        if writeback_config:
+            config.write(fh)
+    return keeper_id, keeper_email
+
+
 def get_args() -> argparse.Namespace:
     """Parse command line arguments.
 
@@ -306,8 +378,11 @@ def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--src-url", type=str, default=ACEARCHIVE_API_URI,
                         help=f"URL of the Ace Archive API to backup. Defaults to {ACEARCHIVE_API_URI}")
-    parser.add_argument("-d", "--destination", type=str, default=f"{os.getcwd()}/ace-archive",
-                        help=f"Local destination directory to backup files to. Defaults to {os.getcwd()}/ace-archive.")
+    parser.add_argument("-d", "--destination", type=str, default="ace-archive",
+                        help="Local destination directory to backup files to. Defaults to ace-archive.")
+    parser.add_argument("-e", "--email", type=str, required=False,
+                        help="""Optionally provide an email address.
+                        This will only be used in a disaster recovery event. Not required.""")
     parser.add_argument("-l", "--log-file", type=str, required=False,
                         help="Log what's happening to the specified file. Defaults to no log file.")
     parser.add_argument("-v", "--verbose", action="count", default=0,
@@ -315,12 +390,16 @@ def get_args() -> argparse.Namespace:
                         Can be specified multiple times for more verbosity. Defaults to logging errors only.""")
     parser.add_argument("-q", "--quiet", action="store_true", required=False,
                         help="Do not print log messages to stderr.")
+    parser.add_argument("--config-file", type=str, default="keeper.conf",
+                        help="""Config file to read the keeper ID and optional keeper email address from,
+                        Defaults to 'keeper.conf'. This Should not generally be changed.""")
     return parser.parse_args()
 
 
 def main_cli() -> NoReturn:
     """Run main script logic."""
     args = get_args()
+    keeper_id, keeper_email = configure(args.config_file, args.email)
 
     setup_logging(logger,
                   log_file=args.log_file,
@@ -343,6 +422,12 @@ def main_cli() -> NoReturn:
         archive_size += artifact.size
     logger.info("Archive backup completed.")
     logger.info(f"Archive hash: {archive_hash.hexdigest()}")
+
+    archive_metadata = format_archive_metadata(
+        keeper_id, keeper_email, archive_size, keeper_email
+    )
+    with open(f"{args.destination}/backup.json", 'wb+') as manifest:
+        manifest.write(archive_metadata)
 
 
 if __name__ == "__main__":
