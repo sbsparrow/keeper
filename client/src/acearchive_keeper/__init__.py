@@ -16,6 +16,8 @@ from typing import BinaryIO, NoReturn
 from uuid import uuid4
 
 import jcs
+from pathvalidate import sanitize_filename
+from pathvalidate.argparse import validate_filepath_arg
 import requests
 from requests.exceptions import HTTPError, JSONDecodeError
 
@@ -175,7 +177,7 @@ class AceArtifact():
         """
         artifact_size = 0
         logger.info(f"Starting backup for {self.id}")
-        backup_path = os.path.join(backup_root, self.id)
+        backup_path = os.path.join(backup_root, self.id)"
         if not os.path.exists(backup_path):
             logger.info(f"Creating artifact directory: {backup_path}")
             os.mkdir(backup_path)
@@ -187,12 +189,13 @@ class AceArtifact():
             logger.info(f"Artifact directory already exists: {backup_path}")
 
         for archive_file in self.files:
-            file_path = f"{backup_path}/{archive_file.filename}"
-            logger.info(f"Starting backup of {self.id}:{archive_file.filename}")
+            sanitized_filename = sanitize_filename(archive_file.filename)
+            file_path = os.path.join(backup_path, sanitized_filename)
+            logger.info(f"Starting backup of {self.id}:{sanitized_filename}")
             try:
                 on_disk_hash = read_on_disk_hash(file_path)
                 if archive_file.hash == on_disk_hash:
-                    msg = f"""Skipping file download for {self.id}{archive_file.filename}. On-disk of hash of file {file_path} matches archive hash: {archive_file.hash}"""
+                    msg = f"""Skipping file download for {self.id}:{sanitized_filename}. On-disk of hash of file {file_path} matches archive hash: {archive_file.hash}"""
                     artifact_size += os.path.getsize(file_path)
                     logger.info(msg)
                     continue  # backup not needed; skip to loop iteration; i.e. next file
@@ -200,13 +203,6 @@ class AceArtifact():
                 pass  # no on disk copy of this file; that's fine
 
             try:
-                # Some artifacts have files with filenames that contain '/'s.
-                # For example {artifact_id}/{some_string}/index.html
-                # For these artifacts, create the subdirectory. But don't recurse.
-                if not os.path.isdir(os.path.dirname(file_path)):
-                    logger.warning(f"""Trying to create containing directory for {file_path}. This artifact may have a '/' in the filename. Backing up this file may fail.""")
-                    os.mkdir(os.path.dirname(file_path))
-
                 with open(file_path, "wb") as file:
                     archive_file.fetch_file(file)
                     # bytes written to the file as the file size, but file size is what we want.
@@ -428,19 +424,19 @@ def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--src-url", type=str, default=ACEARCHIVE_API_URI,
                         help=f"URL of the Ace Archive API to backup. Defaults to {ACEARCHIVE_API_URI}")
-    parser.add_argument("-d", "--destination", type=str, default="ace-archive",
+    parser.add_argument("-d", "--destination", type=validate_filepath_arg, default="ace-archive",
                         help="Local destination directory to backup files to. Defaults to ace-archive.")
     parser.add_argument("-e", "--email", type=str, required=False,
                         help="""Optionally provide an email address.
                         This will only be used in a disaster recovery event. Not required.""")
-    parser.add_argument("-l", "--log-file", type=str, required=False,
+    parser.add_argument("-l", "--log-file", type=validate_filepath_arg, required=False,
                         help="Log what's happening to the specified file. Defaults to no log file.")
     parser.add_argument("-v", "--verbose", action="count", default=0,
                         help="""Increase logging verbosity to both the log file and stderr.
                         Can be specified multiple times for more verbosity. Defaults to logging errors only.""")
     parser.add_argument("-q", "--quiet", action="store_true", required=False,
                         help="Do not print log messages to stderr.")
-    parser.add_argument("--config-file", type=str, default="keeper.conf",
+    parser.add_argument("--config-file", type=validate_filepath_arg, default="keeper.conf",
                         help="""Config file to read the keeper ID and optional keeper email address from,
                         Defaults to 'keeper.conf'. This Should not generally be changed.""")
     # Hidden arguments for internal testing only.
