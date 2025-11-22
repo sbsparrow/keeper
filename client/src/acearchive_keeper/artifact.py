@@ -124,10 +124,10 @@ class AceArtifact():
         """
         with open(metadata_path, "wb+") as metadata_file:
             if metadata_file.read() != self.metadata():
-                logger.info(f"Writting updated metadata for {self.id}")
+                logger.debug(f"Writting updated metadata for {self.id}")
                 metadata_file.write(jcs.canonicalize(self.metadata()))
             else:
-                logger.info(f"On-disk metadata for {self.id} already up-to-date.")
+                logger.debug(f"On-disk metadata for {self.id} already up-to-date.")
 
     def backup(self, backup_root: str) -> NoReturn:
         """Backup this artifact to a subdirectory under backup_root.
@@ -146,31 +146,34 @@ class AceArtifact():
         """
         artifact_size = 0
         files_fetched = 0
-        logger.info(f"Starting backup for {self.id}")
+        logger.debug(f"Starting backup for {self.id}")
         backup_path = os.path.join(backup_root, self.id)
         if not os.path.exists(backup_path):
-            logger.info(f"Creating artifact directory: {backup_path}")
+            logger.debug(f"Creating artifact directory: {backup_path}")
             os.mkdir(backup_path)
         elif os.path.exists(backup_path) and not os.path.isdir(backup_path):
             msg = f"Can't create directory to backup artifact. A file with the directory name already exists: {backup_path}"
             logger.error(msg)
             raise FileExistsError(msg)
         else:
-            logger.info(f"Artifact directory already exists: {backup_path}")
+            logger.debug(f"Artifact directory already exists: {backup_path}")
 
         for archive_file in self.files:
             sanitized_filename = sanitize_filename(archive_file.filename)
             file_path = os.path.join(backup_path, sanitized_filename)
-            logger.info(f"Starting backup of {self.id}:{sanitized_filename}")
+            logger.debug(f"Starting backup of {self.id}:{sanitized_filename}")
             try:
                 on_disk_hash = read_on_disk_hash(file_path)
                 if archive_file.hash == on_disk_hash:
                     msg = f"""Skipping file download for {self.id}:{sanitized_filename}. On-disk of hash of file {file_path} matches archive hash: {archive_file.hash}"""
                     artifact_size += os.path.getsize(file_path)
                     files_fetched += 1
-                    logger.info(msg)
+                    logger.debug(msg)
                     continue  # backup not needed; skip to loop iteration; i.e. next file
+                else:
+                    logger.info(f"Downloading updated copy of file: {os.path.relpath(file_path, backup_root)}")
             except FileNotFoundError:
+                logger.info(f"Downloading file: {os.path.relpath(file_path, backup_root)}")
                 pass  # no on disk copy of this file; that's fine
 
             try:
@@ -185,7 +188,6 @@ class AceArtifact():
         self.files_fetched = files_fetched
         self.size = artifact_size
         metadata_path = os.path.join(backup_path, "metadata.json")
-        logger.info(f"Writing metadata.json for artifact {self.id} to {metadata_path}.")
         self.write_metadata(metadata_path)
 
     def prune_old_files(self, backup_root: str) -> set:

@@ -35,14 +35,14 @@ def read_on_disk_hash(filepath: str) -> str:
 
 def setup_logging(logger: logging.Logger,
                   log_file: str | None,
-                  log_verbosity: int,
+                  log_verbosity: bool,
                   surpress_stderr: bool) -> NoReturn:
     """Configure log handlers based.
 
     :param log_file: The file to log to
     :type log_file: str
-    :param log_verbosity: How verbose should the log messages be.
-    :type log_verbosity: int
+    :param log_verbosity: Increase logging verbosity?
+    :type log_verbosity: bool
     :param stderr_logging: Surpress stderr logs?
     :type stderr_logging: bool
     """
@@ -60,14 +60,10 @@ def setup_logging(logger: logging.Logger,
         stderr_handler.setFormatter(utcz_formatter)
         handlers.append(stderr_handler)
 
-    if log_verbosity == 0:
-        log_level = logging.ERROR
-    elif log_verbosity == 1:
-        log_level = logging.WARNING
-    elif log_verbosity == 2:
-        log_level = logging.INFO
-    elif log_verbosity >= 2:
+    if log_verbosity:
         log_level = logging.DEBUG
+    else:
+        log_level = logging.INFO
 
     logger.setLevel(log_level)
     for handler in handlers:

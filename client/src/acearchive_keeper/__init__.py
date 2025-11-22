@@ -40,7 +40,7 @@ def get_args() -> argparse.Namespace:
                         This will only be used in a disaster recovery event. Not required.""")
     parser.add_argument("-l", "--log-file", type=validate_filepath_arg, required=False,
                         help="Log what's happening to the specified file. Defaults to no log file.")
-    parser.add_argument("-v", "--verbose", action="count", default=0,
+    parser.add_argument("-v", "--verbose", action="store_true", default=False,
                         help="""Increase logging verbosity to both the log file and stderr.
                         Can be specified multiple times for more verbosity. Defaults to logging errors only.""")
     parser.add_argument("-q", "--quiet", action="store_true", required=False,
@@ -99,7 +99,10 @@ def main_cli() -> NoReturn:
         backup_size = 0
         artifact_ids = []
         artifacts_medatata = []
+        artifacts_updated = 0
+        pruned_from_artifacts = set()
 
+        logger.info(f"Geting artifacts from archive url: {args.src_url}.")
         ace_artifacts = list_archive(archive_url=args.src_url)
         ace_artifacts.sort(key=lambda x: x.id)
         logger.info(f"Archive contains {len(ace_artifacts)} artifacts.")
@@ -109,16 +112,17 @@ def main_cli() -> NoReturn:
             artifacts_medatata.append(artifact.metadata())
             backup_size += artifact.size
             files_fetched += artifact.files_fetched
-            artifact.prune_old_files(backup_root=tempdir)
+            if artifact.files_fetched > 0:
+                artifacts_updated += 1
+            pruned_from_artifacts |= artifact.prune_old_files(backup_root=tempdir)
 
         backup_checksum = sha256(jcs.canonicalize(artifacts_medatata)).hexdigest()
         archive_metadata = format_backup_metadata(keeper_id, backup_checksum, backup_size, keeper_email)
         with open(os.path.join(tempdir, "backup.json"), 'wb+') as manifest:
             manifest.write(archive_metadata)
 
-        logger.info(f"Artifact backup completed. Backup checksum: {backup_checksum}")
         logger.info("Pruning deleted artifacts from backup")
-        prune_dirs(artifact_ids=artifact_ids, backup_root=tempdir)
+        pruned_from_root = prune_dirs(artifact_ids=artifact_ids, backup_root=tempdir)
 
         logger.info(f"Zipping {tempdir} up into {zip_path}")
 
@@ -138,7 +142,11 @@ def main_cli() -> NoReturn:
         backup_size=backup_size,
         backup_checksum=backup_checksum,
     )
-    logger.info(f"Backup completed. {files_fetched} files downloaded.")
+    logger.info("Backup completed.")
+    logger.info(f"{files_fetched} files updated for {artifacts_updated} artifacts")
+    logger.info(f"Pruned {len(pruned_from_artifacts)} files from existing artifacts.")
+    logger.info(f"Pruned {len(pruned_from_root)} items from backup root.")
+    logger.info(f"Backup contains a total of {len(ace_artifacts)} with a total size of {backup_size} bytes")
 
 
 if __name__ == "__main__":

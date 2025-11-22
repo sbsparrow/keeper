@@ -79,13 +79,13 @@ def list_archive(archive_url: str, artifacts_per_page: int = 100) -> list[AceArt
     artifact_url = f"{archive_url}/artifacts/"
     params = {'limit': artifacts_per_page}
     while True:
-        logger.info(f"Getting next page of artifacts from {artifact_url}")
+        logger.debug(f"Getting next page of artifacts from {artifact_url}")
         response = requests.get(url=artifact_url, params=params)
         try:
             response.raise_for_status()
             json_response = response.json()
 
-            logger.info(f"Got {len(json_response.get("items"))} artifacts on this page.")
+            logger.debug(f"Got {len(json_response.get("items"))} artifacts on this page.")
             for artifact in json_response.get("items"):
                 try:
                     artifacts.append(AceArtifact(**artifact))
@@ -96,7 +96,7 @@ def list_archive(archive_url: str, artifacts_per_page: int = 100) -> list[AceArt
                 params.update({"cursor": json_response["next_cursor"]})
                 logger.debug(f"Next cursor is: {json_response.get("next_cursor", "")}")
             except KeyError:
-                logger.info("next_cursor not found in response. This is the last page.")
+                logger.debug("next_cursor not found in response. This is the last page.")
                 break
 
         except HTTPError as e:
