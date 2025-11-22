@@ -232,6 +232,40 @@ def get_server_checksum(checksum_api_url: str):
         return None, None
 
 
+def tell_acearchive_about_this_backup(
+        backup_api_url: str,
+        keeper_id: str,
+        backup_size: int,
+        backup_checksum: str,
+        keeper_email: str | None) -> NoReturn:
+    """Post details of this backups run to the acearchive backups API.
+
+    :param backup_api_url: The URL of the backups API to post to
+    :type backup_api_url: str
+    :param keeper_id: The keeper ID
+    :type keeper_id: str
+    :param backup_size: The size of all files in the backed-up archive, including up-to-date files
+    :type backup_size: int
+    :param keeper_email: An optional email address for the keeper of this backup
+    :type keeper_email: str | None
+    """
+    format_version = 1
+    backup_payload = {
+        "format_version": format_version,
+        "keeper_id": keeper_id,
+        "checksum": backup_checksum,
+        "size": backup_size,
+        "email": keeper_email
+    }
+    if keeper_email is None:
+        backup_payload.pop("email")
+    try:
+        response = requests.post(backup_api_url, json=backup_payload)
+        response.raise_for_status()
+    except HTTPError as e:
+        logger.critical(f"""Error posting to ace-archive backups api. {e.response.status_code} recived from URL: {e.request.url}.""")
+
+
 def format_archive_metadata(keeper_id: str,
                             archive_checksum: str,
                             size: int,
@@ -459,6 +493,14 @@ def main_cli() -> NoReturn:
     archive_metadata = format_archive_metadata(keeper_id, artifacts_checksum, archive_size, keeper_email)
     with open(os.path.join(args.destination, "backup.json"), 'wb+') as manifest:
         manifest.write(archive_metadata)
+
+    tell_acearchive_about_this_backup(
+        backup_api_url=args.backup_api_url,
+        keeper_id=keeper_id,
+        keeper_email=keeper_email,
+        backup_size=archive_size,
+        backup_checksum=artifacts_checksum,
+    )
 
 
 if __name__ == "__main__":
