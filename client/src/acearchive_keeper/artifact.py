@@ -82,6 +82,7 @@ class AceArtifact():
     to_year: int | None = None  # Some artifacts are missing this field
     description: str | None = None  # And this one
     size: int | None = None  # Calculated after backup
+    files_fetched: int = 0  # Incremented during backup
 
     def __post_init__(self) -> NoReturn:
         """Convert dicts for files & links into ArtifactFile & LinkModel respectively."""
@@ -99,7 +100,7 @@ class AceArtifact():
         if format != 1:
             logger.warning(f"Unknown metadata format version: {format}. Using format version 1 instead.")
         metadata = asdict(self)
-        for fields in ["size", "url_aliases"]:
+        for fields in ["size", "files_fetched", "url_aliases"]:
             metadata.pop(fields)
         return metadata
 
@@ -143,6 +144,7 @@ class AceArtifact():
         :type backup_root: str
         """
         artifact_size = 0
+        files_fetched = 0
         logger.info(f"Starting backup for {self.id}")
         backup_path = os.path.join(backup_root, self.id)
         if not os.path.exists(backup_path):
@@ -164,6 +166,7 @@ class AceArtifact():
                 if archive_file.hash == on_disk_hash:
                     msg = f"""Skipping file download for {self.id}:{sanitized_filename}. On-disk of hash of file {file_path} matches archive hash: {archive_file.hash}"""
                     artifact_size += os.path.getsize(file_path)
+                    files_fetched += 1
                     logger.info(msg)
                     continue  # backup not needed; skip to loop iteration; i.e. next file
             except FileNotFoundError:
@@ -178,6 +181,7 @@ class AceArtifact():
             except (FileNotFoundError, HTTPError, FileExistsError) as e:
                 logger.error(f"Could not write artifact to {file_path}: {e}. Skipping this file.")
 
+        self.files_fetched = files_fetched
         self.size = artifact_size
         metadata_path = os.path.join(backup_path, "metadata.json")
         logger.info(f"Writing metadata.json for artifact {self.id} to {metadata_path}.")
