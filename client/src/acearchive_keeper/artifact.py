@@ -2,6 +2,7 @@ from dataclasses import asdict, dataclass
 from hashlib import sha256
 import logging
 import os
+from tempfile import gettempdir
 from typing import BinaryIO, NoReturn
 
 import jcs
@@ -186,3 +187,42 @@ class AceArtifact():
         metadata_path = os.path.join(backup_path, "metadata.json")
         logger.info(f"Writing metadata.json for artifact {self.id} to {metadata_path}.")
         self.write_metadata(metadata_path)
+
+    def prune_old_files(self, backup_root: str) -> set:
+        """Remove untrackted files & directories from the artifact's backup dirv
+
+        :param backup_root: backup_root
+        :type backup_root: str
+        :return: The set of removed files & directories
+        :rtype: set
+        """
+        pruned_files = set()
+        pruned_dirs = set()
+
+        tempdir = gettempdir()
+        backup_path = os.path.join(backup_root, self.id)
+        # If trying to prune files outside of the default temp something has gone wrong
+        if os.path.commonpath([tempdir, backup_path]) != tempdir:
+            logger.error(f"Artifact Dir: {backup_path}, not within system temp: {tempdir}")
+            logger.error("Declining to prune files outside system temp prevent possible unintended file deletion.")
+            return pruned_files
+
+        artifact_filenames = [sanitize_filename(file.filename) for file in self.files]
+
+        for dirpath, dirnames, filenames in os.walk(backup_path, topdown=False):
+            for filename in filenames:
+                if filename not in artifact_filenames:
+                    unexpected_filepath = os.path.join(dirpath, filename)
+                    logger.info(f"Pruning {unexpected_filepath}")
+                    pruned_files.add(unexpected_filepath)
+                    os.remove(unexpected_filepath)
+            has_non_empty_subdirs = False
+            for subdir in dirnames:
+                # If there are subdirs that have not been pruned
+                if os.path.join(dirpath, subdir) not in pruned_dirs:
+                    has_non_empty_subdirs = True
+            # If there are no files & no subdirs remaining in the dir after pruning
+            if not any(set(filenames) - pruned_files) and not has_non_empty_subdirs:
+                os.rmdir(dirpath)
+                pruned_dirs.add(dirpath)
+        return pruned_files | pruned_dirs

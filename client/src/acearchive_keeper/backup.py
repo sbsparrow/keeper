@@ -2,8 +2,10 @@ from datetime import datetime, timedelta, timezone
 import json
 import logging
 import os
+from shutil import rmtree
+from tempfile import gettempdir
 from time import localtime
-from zipfile import BadZipFile, ZipFile
+from zipfile import ZipFile
 
 import jcs
 
@@ -41,6 +43,38 @@ def format_backup_metadata(keeper_id: str,
     if email is None:
         uncanonicalized_metadata.pop('email')
     return jcs.canonicalize(uncanonicalized_metadata)
+
+
+def prune_dirs(artifact_ids: list[str], backup_root: str) -> set:
+    """Remove untrackted files & directories from the backup root directory
+
+    :param artifact_ids: The list of artifact ids, assumed to be allowable subdirs
+    :type artifact_ids: list[str]
+    :param backup_root: The root directory of the backup
+    :type backup_root: str
+    :return: The list of removed paths
+    :rtype: list
+    """
+    pruned_items = []
+
+    tempdir = gettempdir()
+    if os.path.commonpath([tempdir, backup_root]) != tempdir:
+        logger.error(f"Backup dir: {backup_root}, not within system temp: {tempdir}")
+        logger.error("Declining to prune files outside system temp prevent possible unintended file deletion.")
+        return pruned_items
+
+    for item in os.listdir(backup_root):
+        if item not in artifact_ids:
+            unexpected_path = os.join(backup_root, item)
+            pruned_items.append(unexpected_path)
+            logger.info(f"Pruning {unexpected_path}")
+            if os.path.islink():
+                os.unlink(unexpected_path)
+            elif os.path.isdir():
+                rmtree(unexpected_path, ignore_errors=True, symlinks=True)
+            else:
+                os.remove(unexpected_path)
+    return pruned_items
 
 
 class BackupZip(ZipFile):

@@ -16,7 +16,7 @@ import jcs
 from pathvalidate.argparse import validate_filepath_arg
 
 from acearchive_keeper.api import get_server_checksum, list_archive, tell_acearchive_about_this_backup
-from acearchive_keeper.backup import BackupZip, format_backup_metadata
+from acearchive_keeper.backup import BackupZip, format_backup_metadata, prune_dirs
 from acearchive_keeper.utils import configure, setup_logging
 
 ACEARCHIVE_API_URI = "https://api.acearchive.lgbt/v0"
@@ -97,6 +97,7 @@ def main_cli() -> NoReturn:
             logger.info("No existing archive file found. Proceeding with full backup")
 
         backup_size = 0
+        artifact_ids = []
         artifacts_medatata = []
 
         ace_artifacts = list_archive(archive_url=args.src_url)
@@ -104,12 +105,11 @@ def main_cli() -> NoReturn:
         logger.info(f"Archive contains {len(ace_artifacts)} artifacts.")
         for artifact in ace_artifacts:
             artifact.backup(backup_root=tempdir)
+            artifact_ids.append(artifact.id)
             artifacts_medatata.append(artifact.metadata())
             backup_size += artifact.size
             files_fetched += artifact.files_fetched
-            if artifact.files_fetched > 0:
-                artifacts_updated += 1
-            pruned_from_artifacts |= artifact.prune_old_files(backup_root=tempdir)
+            artifact.prune_old_files(backup_root=tempdir)
 
         backup_checksum = sha256(jcs.canonicalize(artifacts_medatata)).hexdigest()
         archive_metadata = format_backup_metadata(keeper_id, backup_checksum, backup_size, keeper_email)
@@ -117,6 +117,9 @@ def main_cli() -> NoReturn:
             manifest.write(archive_metadata)
 
         logger.info(f"Artifact backup completed. Backup checksum: {backup_checksum}")
+        logger.info("Pruning deleted artifacts from backup")
+        prune_dirs(artifact_ids=artifact_ids, backup_root=tempdir)
+
         logger.info(f"Zipping {tempdir} up into {zip_path}")
 
         with BackupZip(zip_path, 'w', compression=ZIP_STORED) as new_backup:
