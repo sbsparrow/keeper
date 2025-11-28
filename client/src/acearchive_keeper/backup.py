@@ -63,14 +63,15 @@ def prune_dirs(artifact_ids: list[str], backup_root: str) -> set:
         logger.error("Declining to prune files outside system temp prevent possible unintended file deletion.")
         return pruned_items
 
+    expected_paths = artifact_ids + ['backup.json']
     for item in os.listdir(backup_root):
-        if item not in artifact_ids:
-            unexpected_path = os.join(backup_root, item)
+        if item not in expected_paths:
+            unexpected_path = os.path.join(backup_root, item)
             pruned_items.append(unexpected_path)
             logger.info(f"Pruning {unexpected_path}")
-            if os.path.islink():
+            if os.path.islink(unexpected_path):
                 os.unlink(unexpected_path)
-            elif os.path.isdir():
+            elif os.path.isdir(unexpected_path):
                 rmtree(unexpected_path, ignore_errors=True, symlinks=True)
             else:
                 os.remove(unexpected_path)
@@ -89,8 +90,9 @@ class BackupZip(ZipFile):
         try:
             with self.open('backup.json') as prior_manifest:
                 return json.loads(prior_manifest.read()).get("checksum")
-        except (json.JSONDecodeError, FileNotFoundError, KeyError):
+        except (json.JSONDecodeError, FileNotFoundError, KeyError) as e:
             logger.warning("Backup checksum unreadable.")
+            logger.debug(e)
             return None
 
     def zip_dir(self, dir: str) -> None:

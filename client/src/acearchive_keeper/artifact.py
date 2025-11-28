@@ -210,6 +210,7 @@ class AceArtifact():
             return pruned_files
 
         artifact_filenames = [sanitize_filename(file.filename) for file in self.files]
+        artifact_filenames.append('metadata.json')
 
         for dirpath, dirnames, filenames in os.walk(backup_path, topdown=False):
             for filename in filenames:
