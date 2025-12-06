@@ -3,7 +3,7 @@ main = "build/index.js"
 compatibility_date = "2025-11-06"
 
 [build]
-command = "cargo install -q worker-build && worker-build --release"
+command = "cargo install -q 'worker-build@^0.1' && worker-build --release"
 
 [observability]
 enabled = true
