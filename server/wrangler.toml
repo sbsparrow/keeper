@@ -15,4 +15,4 @@ custom_domain = true
 [[d1_databases]]
 binding = "DB"
 database_name = "acearchive-keeper"
-database_id = "87b610c2-c265-4e2e-9070-b38739892317"
+database_id = "936f8e3c-8b98-4f91-933c-ff4189ae96b0"

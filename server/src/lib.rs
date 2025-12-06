@@ -1,3 +1,7 @@
+mod api;
+mod checksum;
+mod validate;
+
 use std::{fmt, sync::Arc};
 
 use axum::{
@@ -5,11 +9,13 @@ use axum::{
     extract::{Json, State},
     http::StatusCode,
     response::NoContent,
-    routing::post,
+    routing::{get, post},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tower_service::Service;
 use worker::{wasm_bindgen::JsValue, *};
+
+use crate::validate::{is_valid_checksum, is_valid_format_version, is_valid_keeper_id};
 
 struct AppState {
     pub db: D1Database,
@@ -24,6 +30,7 @@ impl fmt::Debug for AppState {
 fn router(state: AppState) -> Router {
     Router::new()
         .route("/backups", post(post_backup))
+        .route("/checksum", get(get_checksum))
         .with_state(Arc::new(state))
 }
 
@@ -39,6 +46,7 @@ async fn fetch(
 
 #[derive(Debug, Deserialize)]
 struct BackupRequest {
+    format_version: u32,
     keeper_id: String,
     checksum: String,
     size: u64,
@@ -51,17 +59,36 @@ async fn post_backup(
     State(state): State<Arc<AppState>>,
     Json(body): Json<BackupRequest>,
 ) -> std::result::Result<NoContent, StatusCode> {
+    if !is_valid_format_version(body.format_version) {
+        console_error!("Unexpected backup format version: {}", &body.format_version);
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    if !is_valid_keeper_id(&body.keeper_id) {
+        console_error!("Keeper ID is not a valid UUID: {}", &body.keeper_id);
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    if !is_valid_checksum(&body.checksum) {
+        console_error!(
+            "Checksum had an unexpected length or encoding: {}",
+            &body.checksum
+        );
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
     state
         .db
         .prepare(
             r#"
-            INSERT INTO backups (keeper_id, checksum, size, contact, contact_type)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO backups (format_version, keeper_id, checksum, size, contact, contact_type)
+            VALUES (?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(&[
-            body.keeper_id.into(),
-            body.checksum.into(),
+            body.format_version.into(),
+            body.keeper_id.clone().into(),
+            body.checksum.to_ascii_lowercase().into(),
             // An f64 can only losslessly represent integers up to 2^53. In context, that's 8 PiB
             // (pebibytes). We don't need to worry about it.
             (body.size as f64).into(),
@@ -79,5 +106,43 @@ async fn post_backup(
         .await
         .or(Err(StatusCode::INTERNAL_SERVER_ERROR))?;
 
+    console_log!(
+        "Inserted backup record.\nKeeper ID: {}\nChecksum: {}\nSize: {}\nContact: {}\nFormat Version: {}",
+        body.keeper_id,
+        body.checksum,
+        body.size,
+        body.email.as_deref().unwrap_or_default(),
+        body.format_version,
+    );
+
     Ok(NoContent)
+}
+
+#[derive(Debug, Serialize)]
+struct ChecksumResponse {
+    format_version: u32,
+    checksum: String,
+}
+
+#[axum::debug_handler]
+#[worker::send]
+async fn get_checksum() -> std::result::Result<Json<ChecksumResponse>, StatusCode> {
+    let upstream_artifacts = api::fetch_all_artifacts().await.map_err(|e| {
+        console_error!("Error fetching artifacts from upstream: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let checksum = checksum::compute_backup_checksum(&upstream_artifacts).map_err(|e| {
+        console_error!("Error computing backup checksum: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    console_log!("Computed backup checksum: {}", &checksum);
+
+    let response = ChecksumResponse {
+        format_version: validate::CURRENT_FORMAT_VERSION,
+        checksum,
+    };
+
+    Ok(Json(response))
 }

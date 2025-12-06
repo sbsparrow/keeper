@@ -3,6 +3,7 @@
 CREATE TABLE "backups" (
   id integer PRIMARY KEY,
   keeper_id text NOT NULL,
+  format_version integer NOT NULL,
   checksum text NOT NULL,
   size integer NOT NULL,
   contact text NULL,
