@@ -16,6 +16,8 @@ struct FileMetadata {
     hash: String,
     hash_algorithm: String,
     url: String,
+    short_url: String,
+    raw_url: String,
     lang: Option<String>,
     hidden: bool,
 }
@@ -30,6 +32,7 @@ struct LinkMetadata {
 struct ArtifactMetadata {
     id: String,
     url: String,
+    short_url: String,
     title: String,
     summary: String,
     description: Option<String>,
@@ -48,6 +51,7 @@ impl From<crate::api::ArtifactResponse> for ArtifactMetadata {
         Self {
             id: artifact.id,
             url: artifact.url,
+            short_url: artifact.short_url,
             title: artifact.title,
             summary: artifact.summary,
             description: artifact.description,
@@ -61,6 +65,8 @@ impl From<crate::api::ArtifactResponse> for ArtifactMetadata {
                     hash: file.hash,
                     hash_algorithm: file.hash_algorithm,
                     url: file.url,
+                    short_url: file.short_url,
+                    raw_url: file.raw_url,
                     lang: file.lang,
                     hidden: file.hidden,
                 })

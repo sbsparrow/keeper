@@ -72,7 +72,7 @@ def prune_dirs(artifact_ids: list[str], backup_root: str) -> set:
             if os.path.islink(unexpected_path):
                 os.unlink(unexpected_path)
             elif os.path.isdir(unexpected_path):
-                rmtree(unexpected_path, ignore_errors=True, symlinks=True)
+                rmtree(unexpected_path, ignore_errors=True)  # unlinks symlinks; does not follow them
             else:
                 os.remove(unexpected_path)
     return pruned_items

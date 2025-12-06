@@ -12,6 +12,8 @@ pub struct FileResponse {
     pub hash: String,
     pub hash_algorithm: String,
     pub url: String,
+    pub short_url: String,
+    pub raw_url: String,
     pub lang: Option<String>,
     pub hidden: bool,
 }
@@ -29,6 +31,7 @@ pub struct ArtifactResponse {
     pub summary: String,
     pub description: Option<String>,
     pub url: String,
+    pub short_url: String,
     pub files: Vec<FileResponse>,
     pub links: Vec<LinkResponse>,
     pub people: Vec<String>,

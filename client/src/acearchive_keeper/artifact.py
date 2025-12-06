@@ -37,6 +37,8 @@ class ArtifactFile():
     hash: str  # noqa: A003
     hash_algorithm: str
     url: str
+    short_url: str
+    raw_url: str
     hidden: bool
     lang: str | None = None  # Some files are missing this field
 
@@ -49,7 +51,7 @@ class ArtifactFile():
         chunk_size = 128 * 1024
         bytes_written = 0
         try:
-            with requests.get(self.url, stream=True) as response:
+            with requests.get(self.raw_url, stream=True) as response:
                 response.raise_for_status()
                 for chunk in response.iter_content(chunk_size=chunk_size):
                     bytes_written += file.write(chunk)
@@ -73,6 +75,7 @@ class AceArtifact():
     summary: str
     url: str
     url_aliases: list[str]
+    short_url: str
     files: list[dict] | list[ArtifactFile]
     links: list[dict] | list[LinkModel]
     people: list[str]
