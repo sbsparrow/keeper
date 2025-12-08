@@ -1,5 +1,6 @@
 from dataclasses import asdict, dataclass
 from hashlib import sha256
+import json
 import logging
 import os
 from tempfile import gettempdir
@@ -132,6 +133,23 @@ class AceArtifact():
             else:
                 logger.debug(f"On-disk metadata for {self.id} already up-to-date.")
 
+    def get_slug(self) -> str:
+        """Get the current artifact slug from the current artifact URL
+
+        :return: The artifact slug
+        :rtype: str
+        """
+        return self.url.rsplit('/', 1)[-1]
+
+    def get_slug_aliases(self) -> list[str]:
+        """Get the list of artifact slug aliases
+
+        :return: The list of artifact slug aliases
+        :rtype: list[str]
+        """
+        return [url.rsplit('/', 1)[-1] for url in self.url_aliases]
+
+
     def backup(self, backup_root: str) -> NoReturn:
         """Backup this artifact to a subdirectory under backup_root.
 
@@ -150,7 +168,8 @@ class AceArtifact():
         artifact_size = 0
         files_fetched = 0
         logger.debug(f"Starting backup for {self.id}")
-        backup_path = os.path.join(backup_root, self.id)
+        artifact_slug = self.get_slug()
+        backup_path = os.path.join(backup_root, artifact_slug)
         if not os.path.exists(backup_path):
             logger.debug(f"Creating artifact directory: {backup_path}")
             os.mkdir(backup_path)
@@ -164,13 +183,12 @@ class AceArtifact():
         for archive_file in self.files:
             sanitized_filename = sanitize_filename(archive_file.filename)
             file_path = os.path.join(backup_path, sanitized_filename)
-            logger.debug(f"Starting backup of {self.id}:{sanitized_filename}")
+            logger.debug(f"Starting backup of {self.id} to {artifact_slug}/{sanitized_filename}")
             try:
                 on_disk_hash = read_on_disk_hash(file_path)
                 if archive_file.hash == on_disk_hash:
-                    msg = f"""Skipping file download for {self.id}:{sanitized_filename}. On-disk of hash of file {file_path} matches archive hash: {archive_file.hash}"""
+                    msg = f"""Skipping file download for {self.id} to {artifact_slug}/{sanitized_filename}. On-disk of hash of file {file_path} matches archive hash: {archive_file.hash}"""
                     artifact_size += os.path.getsize(file_path)
-                    files_fetched += 1
                     logger.debug(msg)
                     continue  # backup not needed; skip to loop iteration; i.e. next file
                 else:
@@ -183,6 +201,7 @@ class AceArtifact():
                 with open(file_path, "wb") as file:
                     archive_file.fetch_file(file)
                     # bytes written to the file as the file size, but file size is what we want.
+                files_fetched += 1
                 artifact_size += os.path.getsize(file_path)
 
             except (FileNotFoundError, HTTPError, FileExistsError) as e:
@@ -205,7 +224,7 @@ class AceArtifact():
         pruned_dirs = set()
 
         tempdir = gettempdir()
-        backup_path = os.path.join(backup_root, self.id)
+        backup_path = os.path.join(backup_root, self.get_slug())
         # If trying to prune files outside of the default temp something has gone wrong
         if os.path.commonpath([tempdir, backup_path]) != tempdir:
             logger.error(f"Artifact Dir: {backup_path}, not within system temp: {tempdir}")
@@ -232,3 +251,23 @@ class AceArtifact():
                 os.rmdir(dirpath)
                 pruned_dirs.add(dirpath)
         return pruned_files | pruned_dirs
+
+    def relocate(self, old_dir: str, backup_root: str) -> str:
+        """Relocate an artifact from it's old path to the expected path based on current artifact metadata
+
+        :param old_dir: The existing artifact dir
+        :type old_dir: str
+        :param backup_root: The root directory of the backup
+        :type backup_root: str
+        :return: The new artifact path
+        :rtype: str
+        """
+        old_path = os.path.join(backup_root, old_dir)
+        new_path = os.path.join(backup_root, self.get_slug())
+        if os.path.exists(new_path):
+            logger.warning(f"Can't move {old_dir} to {self.get_slug()} Destination directory already exists: {new_path}")
+            return old_path
+        else:
+            os.rename(src=old_path, dst=new_path)
+            logger.info(f"Moved {old_dir} to {self.get_slug()}")
+            return new_path

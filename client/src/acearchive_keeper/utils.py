@@ -5,7 +5,9 @@ A tool for participants (called "keepers") to host backups of Ace Archive.
 import configparser
 from typing import NoReturn
 from hashlib import sha256
+import json
 import logging
+import os
 import sys
 from uuid import uuid4
 
@@ -31,6 +33,25 @@ def read_on_disk_hash(filepath: str) -> str:
 
             filesha.update(byte_batch)
     return filesha.hexdigest()
+
+
+def get_id_from_artifact_dir(artifact_dir: str) -> str:
+    """Read the ID of an artifact from the metadata.json in that artifact dir
+
+    :param metadata_file: The path to a ace-archive artifact dir
+    :type metadata_file: str
+    :return: Artifact ID
+    :rtype: str
+    """
+    try:
+        with open(os.path.join(artifact_dir, "metadata.json")) as fh:
+            return json.load(fh)['id']
+    except NotADirectoryError:
+        logger.warning(f"{artifact_dir} is not an artifact dir")
+    except (FileNotFoundError, json.JSONDecodeError):
+        logger.warning(f"Could not read on-disk metadata for artifact at: {artifact_dir}")
+    except KeyError:
+        logger.warning(f"Read metadata but could not get artifact ID for artifact at: {artifact_dir}")
 
 
 def setup_logging(logger: logging.Logger,

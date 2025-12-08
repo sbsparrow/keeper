@@ -45,11 +45,26 @@ def format_backup_metadata(keeper_id: str,
     return jcs.canonicalize(uncanonicalized_metadata)
 
 
-def prune_dirs(artifact_ids: list[str], backup_root: str) -> set:
+def get_unexpected_dirs(artifact_slugs: set[str], backup_root: str) -> set:
+    """Get a list of unexpected artifact directories
+
+    :param artifact_slugs: The list of artifact slugs, assumed to be allowable subdirs
+    :type artifact_slugs: list[str]
+    :param backup_root: The root directory of the backup
+    :type backup_root: str
+    :return: The set of unexpected directories
+    :rtype: set
+    """
+    expected_dirnames = artifact_slugs
+    present_dirnames = {i for i in os.listdir(backup_root)}
+    return present_dirnames - expected_dirnames
+
+
+def prune_dirs(expected_dirs: set[str], backup_root: str) -> set:
     """Remove untrackted files & directories from the backup root directory
 
-    :param artifact_ids: The list of artifact ids, assumed to be allowable subdirs
-    :type artifact_ids: list[str]
+    :param expected_dirs: The list of expected dirs
+    :type expected_dirs: list[str]
     :param backup_root: The root directory of the backup
     :type backup_root: str
     :return: The list of removed paths
@@ -63,9 +78,8 @@ def prune_dirs(artifact_ids: list[str], backup_root: str) -> set:
         logger.error("Declining to prune files outside system temp prevent possible unintended file deletion.")
         return pruned_items
 
-    expected_paths = artifact_ids + ['backup.json']
     for item in os.listdir(backup_root):
-        if item not in expected_paths:
+        if item not in expected_dirs:
             unexpected_path = os.path.join(backup_root, item)
             pruned_items.append(unexpected_path)
             logger.info(f"Pruning {unexpected_path}")
