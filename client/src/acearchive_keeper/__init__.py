@@ -16,8 +16,8 @@ import jcs
 from pathvalidate.argparse import validate_filepath_arg
 
 from acearchive_keeper.api import get_server_checksum, list_archive, tell_acearchive_about_this_backup
-from acearchive_keeper.backup import BackupZip, format_backup_metadata, prune_dirs
-from acearchive_keeper.utils import configure, setup_logging
+from acearchive_keeper.backup import BackupZip, format_backup_metadata, get_unexpected_dirs, prune_dirs
+from acearchive_keeper.utils import configure, get_id_from_artifact_dir, setup_logging
 
 ACEARCHIVE_API_URI = "https://api.acearchive.lgbt/v0"
 
@@ -90,7 +90,7 @@ def main_cli() -> NoReturn:
 
         except BadZipfile:
             logger.warning(f"{zip_path} exists but it is not a zip file. Moving aside so we don't overrite")
-            new_path = f"{zip_path}.{datetime.now().timestamp()}.bakup"
+            new_path = f"{zip_path}.{datetime.datetime.now().timestamp()}.bakup"
             logger.warning(f"Moving {zip_path} to {new_path}")
             os.rename(zip_path, new_path)
         except FileNotFoundError:
@@ -100,21 +100,40 @@ def main_cli() -> NoReturn:
         artifact_ids = []
         artifacts_medatata = []
         artifacts_updated = 0
+        artifacts_relocated = 0
         pruned_from_artifacts = set()
+
+        artifacts_path = os.path.join(tempdir, "artifacts")
+        if not os.path.exists(artifacts_path):
+            os.mkdir(artifacts_path)
 
         logger.info(f"Geting artifacts from archive url: {args.src_url}.")
         ace_artifacts = list_archive(archive_url=args.src_url)
         ace_artifacts.sort(key=lambda x: x.id)
         logger.info(f"Archive contains {len(ace_artifacts)} artifacts.")
+
+        expected_artifact_dirs = {a.get_slug() for a in ace_artifacts}
+        unexpected_dirs = get_unexpected_dirs(artifact_slugs=expected_artifact_dirs, backup_root=artifacts_path)
+        try:
+            unexpected_dirs_by_id = {get_id_from_artifact_dir(os.path.join(artifacts_path, d)): d for d in unexpected_dirs}
+        except KeyError:
+            logger.error("Could get on-disk metadata  of unexpected dirs. Renamed artifacts will be re-downloaded.")
+
         for artifact in ace_artifacts:
-            artifact.backup(backup_root=tempdir)
+            if artifact.id in unexpected_dirs_by_id.keys():
+                old_dir = unexpected_dirs_by_id[artifact.id]
+                logger.info(f"Artifact rename detected for: {artifact.id}")
+                artifact.relocate(old_dir=old_dir, backup_root=artifacts_path)
+                artifacts_relocated += 1
+                unexpected_dirs.remove(old_dir)
+            artifact.backup(backup_root=artifacts_path)
             artifact_ids.append(artifact.id)
             artifacts_medatata.append(artifact.metadata())
             backup_size += artifact.size
             files_fetched += artifact.files_fetched
             if artifact.files_fetched > 0:
                 artifacts_updated += 1
-            pruned_from_artifacts |= artifact.prune_old_files(backup_root=tempdir)
+            pruned_from_artifacts |= artifact.prune_old_files(backup_root=artifacts_path)
 
         backup_checksum = sha256(jcs.canonicalize(artifacts_medatata)).hexdigest()
         archive_metadata = format_backup_metadata(keeper_id, backup_checksum, backup_size, keeper_email)
@@ -122,7 +141,10 @@ def main_cli() -> NoReturn:
             manifest.write(archive_metadata)
 
         logger.info("Pruning deleted artifacts from backup")
-        pruned_from_root = prune_dirs(artifact_ids=artifact_ids, backup_root=tempdir)
+        # We could pass unexpected_dirs into prune_dirs instead of re-checking the artifact dir contents,
+        # But that let's not do that.
+        pruned_from_artifacts_dir = prune_dirs(expected_dirs=expected_artifact_dirs, backup_root=artifacts_path)
+        pruned_from_backup_root = prune_dirs(expected_dirs=['artifacts', 'backup.json', 'README.md'], backup_root=tempdir)
 
         logger.info(f"Zipping {tempdir} up into {zip_path}")
 
@@ -144,8 +166,10 @@ def main_cli() -> NoReturn:
     )
     logger.info("Backup completed.")
     logger.info(f"{files_fetched} files updated for {artifacts_updated} artifacts")
+    logger.info(f"Relocated {artifacts_relocated} artifacts.")
     logger.info(f"Pruned {len(pruned_from_artifacts)} files from existing artifacts.")
-    logger.info(f"Pruned {len(pruned_from_root)} items from backup root.")
+    logger.info(f"Pruned {len(pruned_from_artifacts_dir)} artifacts.")
+    logger.info(f"Pruned {len(pruned_from_backup_root)} items from backup root.")
     logger.info(f"Backup contains a total of {len(ace_artifacts)} with a total size of {backup_size} bytes")
 
 
