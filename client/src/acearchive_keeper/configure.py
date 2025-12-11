@@ -2,16 +2,17 @@ import logging
 from pathlib import Path
 from platform import system
 import toml
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pathvalidate import FilePathValidator
 from pydantic import AfterValidator, BaseModel, EmailStr, ValidationError
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
-def is_valid_filepath_for_platform(file_path: str | Path) -> bool:
-    """Returns true of false if the path is valid for the current OS
+def is_valid_filepath_for_platform(file_path: str | Path) -> str | Path:
+    """Returns true or false if the path is valid for the current OS
 
     :param file_path: The file path to validate
     :type file_path: str | Path
@@ -22,20 +23,29 @@ def is_valid_filepath_for_platform(file_path: str | Path) -> bool:
     if platform == "Darwin":
         platform = "macOS"
     os_validator = FilePathValidator(platform=platform)
-    os_validator.is_valid(file_path)
+    if os_validator.validate(file_path) is None:
+        return file_path
+
+
+def is_optional_valid_filepath_for_platform(file_path: str | Path) -> str | Path:
+    if file_path == "":
+        return file_path
+    else:
+        return is_valid_filepath_for_platform(file_path)
 
 
 ValidPath = Annotated[str | Path, AfterValidator(is_valid_filepath_for_platform)]
+OptionalPath = Annotated[str | Path | Literal[""], AfterValidator(is_optional_valid_filepath_for_platform)]
 
 
 class KeeperModel(BaseModel):
     id: str
-    email: EmailStr | None = None
+    email: EmailStr | Literal[""] = ""
 
 
 class BackupOptionsModel(BaseModel):
-    zip_file: ValidPath | None = None
-    log_file: ValidPath | None = None
+    zip_file: OptionalPath = ""
+    log_file: OptionalPath = ""
     log_verbose: bool = False
 
 
@@ -56,7 +66,10 @@ def read_config(config_file: str) -> ConfigFileModel | None:
     """
     with open(file=config_file, mode='r') as fh:
         config = toml.load(fh)
-    return ConfigFileModel.model_validate(config)
+    try:
+        return ConfigFileModel.model_validate(config)
+    except ValidationError as e:
+        print(e)
 
 
 def write_config(config_file: str | Path, config_data: ConfigFileModel):

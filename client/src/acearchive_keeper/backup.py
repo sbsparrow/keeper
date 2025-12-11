@@ -16,6 +16,7 @@ from acearchive_keeper.artifact import AceArtifact
 from acearchive_keeper.utils import canonicalize_pretty
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 def format_backup_metadata(keeper_id: str,

@@ -11,6 +11,7 @@ from requests.exceptions import HTTPError, JSONDecodeError
 from acearchive_keeper.artifact import AceArtifact
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 def get_server_checksum(checksum_api_url: str) -> tuple[int, str] | tuple[None, None]:

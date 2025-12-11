@@ -6,6 +6,8 @@ import aiofiles
 from argparse import ArgumentTypeError
 from hashlib import sha256
 import logging
+from logging.handlers import QueueHandler
+from queue import Queue
 import sys
 from typing import Any, NoReturn
 from uuid import uuid4
@@ -16,6 +18,7 @@ from pydantic import HttpUrl, ValidationError
 
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 def generate_keeper_id() -> str:
@@ -56,19 +59,14 @@ def setup_logging(logger: logging.Logger,
     :param stderr_logging: Surpress stderr logs?
     :type stderr_logging: bool
     """
-    handlers = []
     utcz_formatter = logging.Formatter("%(asctime)s,%(msecs)03dZ %(name)-14s %(levelname)-8s %(message)s",
                                        datefmt="%Y-%m-%dT%H:%M:%S")
 
     if log_file:
-        file_handler = logging.FileHandler(log_file, 'a')
-        file_handler.setFormatter(utcz_formatter)
-        handlers.append(file_handler)
+        logger.addHandler( logging.FileHandler(log_file, 'a'))
 
     if not surpress_stderr:
-        stderr_handler = logging.StreamHandler(stream=sys.stderr)
-        stderr_handler.setFormatter(utcz_formatter)
-        handlers.append(stderr_handler)
+        logger.addHandler(logging.StreamHandler(stream=sys.stderr))
 
     if log_verbosity:
         log_level = logging.DEBUG
@@ -76,9 +74,20 @@ def setup_logging(logger: logging.Logger,
         log_level = logging.INFO
 
     logger.setLevel(log_level)
-    for handler in handlers:
+
+    for handler in logger.handlers:
+        handler.setFormatter(utcz_formatter)
         handler.setLevel(log_level)
-        logger.addHandler(handler)
+
+
+def setup_gui_logger(logger: logging.Logger, queue: Queue, level = logging.INFO) -> logging.Logger:
+    logger.setLevel(level)
+    gui_formatter = logging.Formatter(fmt="%(asctime)s %(message)s", datefmt="%x %X")
+    queue_handler = QueueHandler(queue)
+    queue_handler.setFormatter(gui_formatter)
+    queue_handler.setLevel(level)
+    logger.addHandler(queue_handler)
+    return logger
 
 
 def canonicalize_pretty(object: Any) -> bytes:
