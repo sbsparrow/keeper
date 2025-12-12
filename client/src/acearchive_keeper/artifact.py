@@ -148,7 +148,6 @@ class AceArtifact():
         """
         return [url.rsplit('/', 1)[-1] for url in self.url_aliases]
 
-
     def backup(self, backup_root: str) -> NoReturn:
         """Backup this artifact to a subdirectory under backup_root.
 

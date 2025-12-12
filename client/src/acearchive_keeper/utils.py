@@ -2,19 +2,25 @@
 
 A tool for participants (called "keepers") to host backups of Ace Archive.
 """
-import configparser
-from typing import NoReturn
+from argparse import ArgumentTypeError
 from hashlib import sha256
 import json
 import logging
 import os
 import sys
-from typing import Any
+from typing import Any, NoReturn
 from uuid import uuid4
 
+from email_validator import EmailNotValidError, validate_email
 from jcs._jcs import JSONEncoder
+from pydantic import HttpUrl, ValidationError
+
 
 logger = logging.getLogger(__name__)
+
+
+def generate_keeper_id() -> str:
+    return str(uuid4())
 
 
 def read_on_disk_hash(filepath: str) -> str:
@@ -95,42 +101,6 @@ def setup_logging(logger: logging.Logger,
         logger.addHandler(handler)
 
 
-def configure(config_file: str, keeper_email: str | None = None) -> tuple[str, str | None]:
-    """Update the keeper config file if needed and return the relavent keep info.
-
-    :param config_file: The config file path to read & write. Will be created if absent.
-    :type config_file: str
-    :param keeper_email: Optionally update the email address in the config file, defaults to None
-    :type keeper_email: str | None, optional
-    :return: Tuple of keeper ID and keeper email adress. Email can be None.
-    :rtype: tuple[str, str | None]
-    """
-    writeback_config = False
-    config = configparser.ConfigParser()
-    with open(config_file, 'w+') as fh:
-        config.read_file(fh)
-        if not config.has_section('Keeper'):
-            config.add_section('Keeper')
-        try:
-            keeper_id = config.get('Keeper', 'ID')
-        except configparser.NoOptionError:
-            keeper_id = str(uuid4())
-            config.set('Keeper', 'ID', keeper_id)
-            writeback_config = True
-        try:
-            if keeper_email != config.get('Keeper', 'email'):
-                config.set('Keeper', 'email', keeper_email)
-                writeback_config = True
-        except configparser.NoOptionError:
-            if keeper_email:
-                config.set('Keeper', 'email', keeper_email)
-                writeback_config = True
-
-        if writeback_config:
-            config.write(fh)
-    return keeper_id, keeper_email
-
-
 def canonicalize_pretty(object: Any) -> bytes:
     """Canonicalize a json-serializable object, but with pretty printing
 
@@ -140,3 +110,21 @@ def canonicalize_pretty(object: Any) -> bytes:
     :rtype: bytes
     """
     return JSONEncoder(indent=4, sort_keys=True).encode(object).encode()
+
+
+def valid_email(email: str) -> str:
+    if email is None or email == "":
+        return None
+    try:
+        emailinfo = validate_email(email, check_deliverability=False)
+        return emailinfo.normalized
+    except EmailNotValidError as e:
+        raise ArgumentTypeError(e) from e
+
+
+def valid_url(url: str) -> HttpUrl:
+    try:
+        validated_url = HttpUrl(url)
+        return validated_url
+    except ValidationError as e:
+        raise ArgumentTypeError(e) from e

@@ -9,15 +9,18 @@ import logging
 import os
 import sys
 from tempfile import TemporaryDirectory
+from toml import TomlDecodeError
 from typing import NoReturn
 from zipfile import BadZipfile, ZIP_STORED
 
 import jcs
 from pathvalidate.argparse import validate_filepath_arg
+from pydantic import HttpUrl
 
 from acearchive_keeper.api import get_server_checksum, list_archive, tell_acearchive_about_this_backup
+from acearchive_keeper.configure import empty_config, read_config, write_config, ValidationError
 from acearchive_keeper.backup import BackupZip, format_backup_metadata, get_unexpected_dirs, prune_dirs
-from acearchive_keeper.utils import configure, get_id_from_artifact_dir, setup_logging
+from acearchive_keeper.utils import generate_keeper_id, get_id_from_artifact_dir, setup_logging, valid_email, valid_url
 
 ACEARCHIVE_API_URI = "https://api.acearchive.lgbt/v0"
 
@@ -31,11 +34,11 @@ def get_args() -> argparse.Namespace:
     :rtype: argparse.Namespace
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument("--src-url", type=str, default=ACEARCHIVE_API_URI,
+    parser.add_argument("--src-url", type=HttpUrl, default=ACEARCHIVE_API_URI,
                         help=f"URL of the Ace Archive API to backup. Defaults to {ACEARCHIVE_API_URI}")
     parser.add_argument("-z", "--archive-zip", type=validate_filepath_arg, default="ace-archive.zip",
                         help="Path to the archive zip file backup files to. Defaults to ace-archive.zip.")
-    parser.add_argument("-e", "--email", type=str, required=False,
+    parser.add_argument("-e", "--email", type=valid_email, required=False,
                         help="""Optionally provide an email address.
                         This will only be used in a disaster recovery event. Not required.""")
     parser.add_argument("-l", "--log-file", type=validate_filepath_arg, required=False,
@@ -49,9 +52,9 @@ def get_args() -> argparse.Namespace:
                         help="""Config file to read the keeper ID and optional keeper email address from,
                         Defaults to 'keeper.conf'. This Should not generally be changed.""")
     # Hidden arguments for internal testing only.
-    parser.add_argument("--backup-api-url", type=str, default=f"{ACEARCHIVE_API_URI}/backups",
+    parser.add_argument("--backup-api-url", type=HttpUrl, default=f"{ACEARCHIVE_API_URI}/backups",
                         help=argparse.SUPPRESS)
-    parser.add_argument("--checksum-api-url", type=str, default=f"{ACEARCHIVE_API_URI}/checksum",
+    parser.add_argument("--checksum-api-url", type=HttpUrl, default=f"{ACEARCHIVE_API_URI}/checksum",
                         help=argparse.SUPPRESS)
     return parser.parse_args()
 
@@ -59,7 +62,23 @@ def get_args() -> argparse.Namespace:
 def main_cli() -> NoReturn:
     """Run main script logic."""
     args = get_args()
-    keeper_id, keeper_email = configure(args.config_file, args.email)
+    try:
+        config = read_config(args.config_file)
+        keeper_id = config.Keeper.id
+    except FileNotFoundError:
+        logger.info("No config file found")
+        logger.info("Generating empty config with new keeper_id")
+        keeper_id = generate_keeper_id()
+        write_config(args.config_file, empty_config(keeper_id))
+    except ValidationError as e:
+        logger.error("Invalid config file")
+        logger.error(e.errors)
+        sys.exit(1)
+    except TomlDecodeError as e:
+        logger.error(e)
+        sys.exit(1)
+
+    keeper_email = args.email
     zip_path = args.archive_zip
 
     setup_logging(logger,
