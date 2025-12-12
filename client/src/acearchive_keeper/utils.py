@@ -114,7 +114,7 @@ def configure(config_file: str, keeper_email: str | None = None) -> tuple[str, s
         try:
             keeper_id = config.get('Keeper', 'ID')
         except configparser.NoOptionError:
-            keeper_id = uuid4().hex
+            keeper_id = str(uuid4())
             config.set('Keeper', 'ID', keeper_id)
             writeback_config = True
         try:
