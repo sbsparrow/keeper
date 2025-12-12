@@ -7,7 +7,7 @@ from tempfile import gettempdir
 from time import localtime
 from zipfile import ZipFile
 
-import jcs
+from acearchive_keeper.utils import canonicalize_pretty
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ def format_backup_metadata(keeper_id: str,
     }
     if email is None:
         uncanonicalized_metadata.pop('email')
-    return jcs.canonicalize(uncanonicalized_metadata)
+    return canonicalize_pretty(uncanonicalized_metadata)
 
 
 def get_unexpected_dirs(artifact_slugs: set[str], backup_root: str) -> set:

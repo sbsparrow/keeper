@@ -9,7 +9,10 @@ import json
 import logging
 import os
 import sys
+from typing import Any
 from uuid import uuid4
+
+from jcs._jcs import JSONEncoder
 
 logger = logging.getLogger(__name__)
 
@@ -126,3 +129,14 @@ def configure(config_file: str, keeper_email: str | None = None) -> tuple[str, s
         if writeback_config:
             config.write(fh)
     return keeper_id, keeper_email
+
+
+def canonicalize_pretty(object: Any) -> bytes:
+    """Canonicalize a json-serializable object, but with pretty printing
+
+    :param object: Any json-serializable object
+    :type object: Any
+    :return: UTF-8 formatted canonicalized json, made pretty
+    :rtype: bytes
+    """
+    return JSONEncoder(indent=4, sort_keys=True).encode(object).encode()

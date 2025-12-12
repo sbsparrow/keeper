@@ -1,6 +1,5 @@
 from dataclasses import asdict, dataclass
 from hashlib import sha256
-import json
 import logging
 import os
 from tempfile import gettempdir
@@ -11,7 +10,7 @@ from pathvalidate import sanitize_filename
 import requests
 from requests.exceptions import HTTPError
 
-from acearchive_keeper.utils import read_on_disk_hash
+from acearchive_keeper.utils import canonicalize_pretty, read_on_disk_hash
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +128,7 @@ class AceArtifact():
         with open(metadata_path, "wb+") as metadata_file:
             if metadata_file.read() != self.metadata():
                 logger.debug(f"Writting updated metadata for {self.id}")
-                metadata_file.write(jcs.canonicalize(self.metadata()))
+                metadata_file.write(canonicalize_pretty(self.metadata()))
             else:
                 logger.debug(f"On-disk metadata for {self.id} already up-to-date.")
 
