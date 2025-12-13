@@ -3,8 +3,8 @@
 A tool for participants (called "keepers") to host backups of Ace Archive.
 """
 import argparse
+import asyncio
 import datetime
-from hashlib import sha256
 import logging
 import os
 import sys
@@ -13,14 +13,13 @@ from toml import TomlDecodeError
 from typing import NoReturn
 from zipfile import BadZipfile, ZIP_STORED
 
-import jcs
 from pathvalidate.argparse import validate_filepath_arg
-from pydantic import HttpUrl
+from pydantic import HttpUrl, EmailStr
 
 from acearchive_keeper.api import get_server_checksum, list_archive, tell_acearchive_about_this_backup
 from acearchive_keeper.configure import empty_config, read_config, write_config, ValidationError
-from acearchive_keeper.backup import BackupZip, format_backup_metadata, get_unexpected_dirs, prune_dirs
-from acearchive_keeper.utils import generate_keeper_id, get_id_from_artifact_dir, setup_logging, valid_email, valid_url
+from acearchive_keeper.backup import Backup, BackupZip
+from acearchive_keeper.utils import generate_keeper_id, setup_logging, valid_email
 
 ACEARCHIVE_API_URI = "https://api.acearchive.lgbt/v0"
 
@@ -78,18 +77,28 @@ def main_cli() -> NoReturn:
         logger.error(e)
         sys.exit(1)
 
-    keeper_email = args.email
-    zip_path = args.archive_zip
-
     setup_logging(logger,
                   log_file=args.log_file,
                   log_verbosity=args.verbose,
                   surpress_stderr=args.quiet)
 
-    logger.info("Getting current ace-archive checksum")
-    server_checksum_format_version, server_checksum = get_server_checksum(checksum_api_url=args.checksum_api_url)
+    asyncio.run(main(
+        keeper_id=keeper_id,
+        keeper_email=args.email,
+        zip_path=args.archive_zip,
+        src_url=args.src_url,
+        backup_api_url=args.backup_api_url,
+        checksum_api_url=args.checksum_api_url))
 
-    files_fetched = 0
+
+async def main(keeper_id: str,
+               keeper_email: EmailStr,
+               zip_path: str,
+               src_url: HttpUrl,
+               checksum_api_url: HttpUrl,
+               backup_api_url: HttpUrl):
+    logger.info("Getting current ace-archive checksum")
+    server_checksum_format_version, server_checksum = get_server_checksum(checksum_api_url=checksum_api_url)
 
     logger.info("Creating temporary directory to hold in-progress backup")
     with TemporaryDirectory() as tempdir:
@@ -100,7 +109,7 @@ def main_cli() -> NoReturn:
             with BackupZip(zip_path) as backup_zip:
                 if backup_zip.get_checksum() == server_checksum:
                     logger.info("On-disk checksum of prior backup matches server's checksum. Skipping backup run")
-                    logger.info(f"Backup completed. {files_fetched} files downloaded.")
+                    logger.info("Backup completed. 0 files downloaded.")
                     sys.exit(0)
                 else:
                     logger.info("On-disk checksum of prior backup does not match server's checksum")
@@ -115,81 +124,50 @@ def main_cli() -> NoReturn:
         except FileNotFoundError:
             logger.info("No existing archive file found. Proceeding with full backup")
 
-        backup_size = 0
-        artifact_ids = []
-        artifacts_medatata = []
-        artifacts_updated = 0
-        artifacts_relocated = 0
-        pruned_from_artifacts = set()
-
-        artifacts_path = os.path.join(tempdir, "artifacts")
-        if not os.path.exists(artifacts_path):
-            os.mkdir(artifacts_path)
-
-        logger.info(f"Geting artifacts from archive url: {args.src_url}.")
-        ace_artifacts = list_archive(archive_url=args.src_url)
-        ace_artifacts.sort(key=lambda x: x.id)
+        logger.info(f"Geting artifacts from archive url: {src_url}.")
+        ace_artifacts = list_archive(archive_url=src_url)
         logger.info(f"Archive contains {len(ace_artifacts)} artifacts.")
 
-        expected_artifact_dirs = {a.get_slug() for a in ace_artifacts}
-        unexpected_dirs = get_unexpected_dirs(artifact_slugs=expected_artifact_dirs, backup_root=artifacts_path)
-        try:
-            unexpected_dirs_by_id = {get_id_from_artifact_dir(os.path.join(artifacts_path, d)): d for d in unexpected_dirs}
-        except KeyError:
-            logger.error("Could get on-disk metadata  of unexpected dirs. Renamed artifacts will be re-downloaded.")
+        expected_artifact_dirs = {a.get_artifact_dir() for a in ace_artifacts}
 
-        for artifact in ace_artifacts:
-            if artifact.id in unexpected_dirs_by_id.keys():
-                old_dir = unexpected_dirs_by_id[artifact.id]
-                logger.info(f"Artifact rename detected for: {artifact.id}")
-                artifact.relocate(old_dir=old_dir, backup_root=artifacts_path)
-                artifacts_relocated += 1
-                unexpected_dirs.remove(old_dir)
-            artifact.backup(backup_root=artifacts_path)
-            artifact_ids.append(artifact.id)
-            artifacts_medatata.append(artifact.metadata())
-            backup_size += artifact.size
-            files_fetched += artifact.files_fetched
-            if artifact.files_fetched > 0:
-                artifacts_updated += 1
-            pruned_from_artifacts |= artifact.prune_old_files(backup_root=artifacts_path)
-
-        backup_checksum = sha256(jcs.canonicalize(artifacts_medatata)).hexdigest()
-        archive_metadata = format_backup_metadata(keeper_id, backup_checksum, backup_size, keeper_email)
-        with open(os.path.join(tempdir, "backup.json"), 'wb+') as manifest:
-            manifest.write(archive_metadata)
+        backup = Backup(backup_root=tempdir)
+        backup.find_moved_artifacts(expected_artifact_dirs)
+        await asyncio.gather(
+            *[backup.backup_artifact(artifact) for artifact in ace_artifacts]
+        )
+        backup.generate_backup_checksum()
+        backup.write_backup_manifest(keeper_id=keeper_id, keeper_email=keeper_email)
 
         logger.info("Pruning deleted artifacts from backup")
         # We could pass unexpected_dirs into prune_dirs instead of re-checking the artifact dir contents,
         # But that let's not do that.
-        pruned_from_artifacts_dir = prune_dirs(expected_dirs=expected_artifact_dirs, backup_root=artifacts_path)
-        pruned_from_backup_root = prune_dirs(expected_dirs=['artifacts', 'backup.json', 'README.md'], backup_root=tempdir)
+        pruned_from_artifacts_dir = backup.prune_artifacts(expected_artifact_dirs)
+        pruned_from_backup_root = backup.prune_backup_root()
 
-        logger.info(f"Zipping {tempdir} up into {zip_path}")
-
+        logger.info(f"Zipping {backup.backup_root} up into {zip_path}")
         with BackupZip(zip_path, 'w', compression=ZIP_STORED) as new_backup:
-            new_backup.zip_dir(tempdir)
+            new_backup.zip_dir(backup.backup_root)
 
         logger.info("Zip completed")
-        logger.info(f"Cleaning up temporary dir: {tempdir}")
+        logger.info(f"Cleaning up temporary dir: {backup.backup_root}")
 
     logger.info("Temporary dir cleaned up")
 
     logger.info("Notifying ace-archive backup api of completed backup")
     tell_acearchive_about_this_backup(
-        backup_api_url=args.backup_api_url,
+        backup_api_url=backup_api_url,
         keeper_id=keeper_id,
         keeper_email=keeper_email,
-        backup_size=backup_size,
-        backup_checksum=backup_checksum,
+        backup_size=backup.backup_size,
+        backup_checksum=backup.checksum,
     )
     logger.info("Backup completed.")
-    logger.info(f"{files_fetched} files updated for {artifacts_updated} artifacts")
-    logger.info(f"Relocated {artifacts_relocated} artifacts.")
-    logger.info(f"Pruned {len(pruned_from_artifacts)} files from existing artifacts.")
+    logger.info(f"{backup.files_fetched} files updated for {backup.artifacts_updated} artifacts")
+    logger.info(f"Relocated {backup.artifacts_relocated} artifacts.")
+    logger.info(f"Pruned {len(backup.pruned_from_artifacts)} files from existing artifacts.")
     logger.info(f"Pruned {len(pruned_from_artifacts_dir)} artifacts.")
     logger.info(f"Pruned {len(pruned_from_backup_root)} items from backup root.")
-    logger.info(f"Backup contains a total of {len(ace_artifacts)} with a total size of {backup_size} bytes")
+    logger.info(f"Backup contains a total of {len(ace_artifacts)} with a total size of {backup.backup_size} bytes")
 
 
 if __name__ == "__main__":

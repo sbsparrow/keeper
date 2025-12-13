@@ -2,11 +2,10 @@
 
 A tool for participants (called "keepers") to host backups of Ace Archive.
 """
+import aiofiles
 from argparse import ArgumentTypeError
 from hashlib import sha256
-import json
 import logging
-import os
 import sys
 from typing import Any, NoReturn
 from uuid import uuid4
@@ -23,7 +22,7 @@ def generate_keeper_id() -> str:
     return str(uuid4())
 
 
-def read_on_disk_hash(filepath: str) -> str:
+async def read_on_disk_hash(filepath: str) -> str:
     """Get the sha256 hash of a file located at a given path.
 
     :param filepath: The path of the file to calculate the hash for
@@ -33,34 +32,15 @@ def read_on_disk_hash(filepath: str) -> str:
     """
     BUF_SIZE = 1024 * 1024
     filesha = sha256()
-    with open(filepath, "rb") as fh:
+    async with aiofiles.open(filepath, "rb") as fh:
         while True:
-            byte_batch = fh.read(BUF_SIZE)
+            byte_batch = await fh.read(BUF_SIZE)
 
             if not byte_batch:
                 break
 
             filesha.update(byte_batch)
     return filesha.hexdigest()
-
-
-def get_id_from_artifact_dir(artifact_dir: str) -> str:
-    """Read the ID of an artifact from the metadata.json in that artifact dir
-
-    :param metadata_file: The path to a ace-archive artifact dir
-    :type metadata_file: str
-    :return: Artifact ID
-    :rtype: str
-    """
-    try:
-        with open(os.path.join(artifact_dir, "metadata.json")) as fh:
-            return json.load(fh)['id']
-    except NotADirectoryError:
-        logger.warning(f"{artifact_dir} is not an artifact dir")
-    except (FileNotFoundError, json.JSONDecodeError):
-        logger.warning(f"Could not read on-disk metadata for artifact at: {artifact_dir}")
-    except KeyError:
-        logger.warning(f"Read metadata but could not get artifact ID for artifact at: {artifact_dir}")
 
 
 def setup_logging(logger: logging.Logger,

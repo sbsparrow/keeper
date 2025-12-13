@@ -1,6 +1,6 @@
 [project]
 name = "acearchive-keeper"
-version = "0.1.19"
+version = "0.2.0"
 description = "A tool for participants to host backups of Ace Archive"
 classifiers = ["Private :: Do Not Upload"]
 authors = [{"name" = "sbsparrow", "email" = "sbsparrow@proton.me"}]
@@ -12,6 +12,8 @@ dependencies = [
     "toml>=0.10.2",
     "pydantic>=2.12.5",
     "email-validator>=2.3.0",
+    "aiohttp>=3.13.2",
+    "aiofiles>=25.1.0",
 ]
 
 
