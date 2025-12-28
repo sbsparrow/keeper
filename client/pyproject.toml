@@ -16,6 +16,11 @@ dependencies = [
     "aiofiles>=25.1.0",
 ]
 
+[dependency-groups]
+
+build = [
+    "pyinstaller>=6.17.0",
+]
 
 [build-system]
 requires = ["uv_build"]
@@ -23,3 +28,9 @@ build-backend = "uv_build"
 
 [project.scripts]
 ace-archive = "acearchive_keeper:main_cli"
+
+[tool.pyinstaller]
+name = "Keeper"
+entry = "src/acearchive_keeper/gui.py"
+icon = "src/acearchive_keeper/resources/AceArchiveKeeper.icns"
+bundle_identifier = "lgbt.acearchive.keeper"

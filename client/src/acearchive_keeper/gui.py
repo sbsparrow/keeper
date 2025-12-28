@@ -345,4 +345,5 @@ def write_options_to_config(config) -> None:
 
 
 if __name__ == "__main__":
+    freeze_support()
     main()
