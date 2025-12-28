@@ -1,6 +1,5 @@
 from concurrent.futures import ProcessPoolExecutor
-from multiprocessing import Manager
-import sys
+from multiprocessing import freeze_support, Manager
 from threading import Thread
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
@@ -9,7 +8,7 @@ from queue import Empty
 import logging
 import logging.handlers
 
-from acearchive_keeper.configure import BackupOptionsModel, ConfigFileModel, KeeperModel, read_config, write_config
+from acearchive_keeper.configure import BackupOptionsModel, ConfigFileModel, KeeperModel, get_config_path, read_config, write_config
 from acearchive_keeper.worker import run_gui_worker, ACEARCHIVE_API_URI, ACEARCHIVE_BACKUPS_API_URI, ACEARCHIVE_CHECKSUM_API_URI
 from acearchive_keeper.utils import setup_gui_logger
 
@@ -336,12 +335,13 @@ def clear_output():
     output_text.config(state="disabled")
 
 
-def read_options_from_config() -> ConfigFileModel:
-    config = read_config(config_file="keeper.toml")
-    return config
+def read_options_from_config():
+    config_file = get_config_path()
+    return read_config(config_file=config_file)
 
-def write_options_to_config(config: ConfigFileModel) -> None:
-    write_config(config_file="keeper.toml", config_data=config)
+def write_options_to_config(config) -> None:
+    config_file = get_config_path()
+    write_config(config_file=config_file, config_data=config)
 
 
 if __name__ == "__main__":

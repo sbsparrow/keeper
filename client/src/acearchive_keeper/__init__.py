@@ -12,9 +12,9 @@ from typing import NoReturn
 from pathvalidate.argparse import validate_filepath_arg
 from pydantic import HttpUrl
 
-from acearchive_keeper.configure import empty_config, read_config, write_config, ValidationError
+from acearchive_keeper.configure import get_config_path, read_config, ValidationError
 from acearchive_keeper.gui import main as run_gui
-from acearchive_keeper.utils import generate_keeper_id, setup_logging, valid_email
+from acearchive_keeper.utils import setup_logging, valid_email
 from acearchive_keeper.worker import main as worker_main, ACEARCHIVE_API_URI, ACEARCHIVE_BACKUPS_API_URI, ACEARCHIVE_CHECKSUM_API_URI
 
 
@@ -42,7 +42,7 @@ def get_args() -> argparse.Namespace:
                         Can be specified multiple times for more verbosity. Defaults to logging errors only.""")
     parser.add_argument("-q", "--quiet", action="store_true", required=False,
                         help="Do not print log messages to stderr.")
-    parser.add_argument("--config-file", type=validate_filepath_arg, default="keeper.conf",
+    parser.add_argument("--config-file", type=validate_filepath_arg, default=get_config_path(),
                         help="""Config file to read the keeper ID and optional keeper email address from,
                         Defaults to 'keeper.conf'. This Should not generally be changed.""")
     parser.add_argument("-g", "--gui", action="store_true", default=False,
@@ -64,11 +64,6 @@ def main_cli() -> NoReturn:
         try:
             config = read_config(args.config_file)
             keeper_id = config.Keeper.id
-        except FileNotFoundError:
-            logger.info("No config file found")
-            logger.info("Generating empty config with new keeper_id")
-            keeper_id = generate_keeper_id()
-            write_config(args.config_file, empty_config(keeper_id))
         except ValidationError as e:
             logger.error("Invalid config file")
             logger.error(e.errors)

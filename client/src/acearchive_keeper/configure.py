@@ -1,14 +1,37 @@
 import logging
+import os
 from pathlib import Path
-from platform import system
+import platform
 import toml
 from typing import Annotated, Literal
 
 from pathvalidate import FilePathValidator
 from pydantic import AfterValidator, BaseModel, EmailStr, ValidationError
+from uuid import uuid4
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+
+def get_config_path():
+    system = platform.system()
+
+    if system == "Darwin":  # macOS
+        base = os.path.join(os.path.expanduser("~"), "Library", "Application Support", "Keeper")
+    elif system == "Windows":
+        base = os.path.join(os.environ.get("APPDATA"), "Keeper")
+    else:  # Linux and others
+        xdg = os.environ.get("XDG_CONFIG_HOME")
+        if xdg:
+            base = os.path.join(xdg, "Keeper")
+        else:
+            base = os.path.join(os.path.expanduser("~"), ".config", "Keeper")
+
+    # Ensure directory exists
+    if not os.path.isdir(base):
+        os.makedirs(base, exist_ok=True)
+
+    return os.path.join(base, "keeper.toml")
 
 
 def is_valid_filepath_for_platform(file_path: str | Path) -> str | Path:
@@ -19,10 +42,10 @@ def is_valid_filepath_for_platform(file_path: str | Path) -> str | Path:
     :return: Is the file path valid for this OS?
     :rtype: bool
     """
-    platform = system()
-    if platform == "Darwin":
-        platform = "macOS"
-    os_validator = FilePathValidator(platform=platform)
+    system = platform.system()
+    if system == "Darwin":
+        system = "macOS"
+    os_validator = FilePathValidator(platform=system)
     if os_validator.validate(file_path) is None:
         return file_path
 
@@ -54,6 +77,10 @@ class ConfigFileModel(BaseModel):
     BackupOptions: BackupOptionsModel
 
 
+def generate_keeper_id() -> str:
+    return str(uuid4())
+
+
 def read_config(config_file: str) -> ConfigFileModel | None:
     """Update the keeper config file if needed and return the relavent keep info.
 
@@ -64,8 +91,17 @@ def read_config(config_file: str) -> ConfigFileModel | None:
     :return: Tuple of keeper ID and keeper email adress. Email can be None.
     :rtype: tuple[str, str | None]
     """
-    with open(file=config_file, mode='r') as fh:
-        config = toml.load(fh)
+    logger.debug(f"Reading config file at: {config_file}")
+    try:
+        with open(file=config_file, mode='r') as fh:
+            config = toml.load(fh)
+    except FileNotFoundError:
+        logger.warning(f"No config file found at {config_file}")
+        keeper_id = generate_keeper_id()
+        logger.info(f"Generating empty config with new keepe_id: {keeper_id}")
+        write_config(config_file=config_file, config_data=empty_config(keeper_id))
+        with open(file=config_file, mode='r') as fh:
+            config = toml.load(fh)
     try:
         return ConfigFileModel.model_validate(config)
     except ValidationError as e:

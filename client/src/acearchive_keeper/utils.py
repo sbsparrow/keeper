@@ -10,7 +10,6 @@ from logging.handlers import QueueHandler
 from queue import Queue
 import sys
 from typing import Any, NoReturn
-from uuid import uuid4
 
 from email_validator import EmailNotValidError, validate_email
 from jcs._jcs import JSONEncoder
@@ -19,10 +18,6 @@ from pydantic import HttpUrl, ValidationError
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-
-
-def generate_keeper_id() -> str:
-    return str(uuid4())
 
 
 async def read_on_disk_hash(filepath: str) -> str:
