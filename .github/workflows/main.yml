@@ -39,5 +39,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: installers-${{ matrix.os }}
-          path: artifacts/**
+          path: client/artifacts/**
           if-no-files-found: error
