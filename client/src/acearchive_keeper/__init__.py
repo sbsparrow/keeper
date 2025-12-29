@@ -14,7 +14,7 @@ from pydantic import HttpUrl
 
 from acearchive_keeper.configure import get_config_path, read_config, ValidationError
 from acearchive_keeper.gui import main as run_gui
-from acearchive_keeper.utils import setup_logging, valid_email
+from acearchive_keeper.utils import load_frozen_certs, setup_logging, valid_email
 from acearchive_keeper.worker import main as worker_main, ACEARCHIVE_API_URI, ACEARCHIVE_BACKUPS_API_URI, ACEARCHIVE_CHECKSUM_API_URI
 
 
@@ -57,6 +57,7 @@ def get_args() -> argparse.Namespace:
 
 def main_cli() -> NoReturn:
     """Run main script logic."""
+    load_frozen_certs()
     args = get_args()
     if args.gui:
         run_gui()

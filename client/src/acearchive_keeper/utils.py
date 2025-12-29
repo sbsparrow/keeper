@@ -2,15 +2,17 @@
 
 A tool for participants (called "keepers") to host backups of Ace Archive.
 """
-import aiofiles
 from argparse import ArgumentTypeError
+import certifi
 from hashlib import sha256
 import logging
 from logging.handlers import QueueHandler
+import os
 from queue import Queue
 import sys
 from typing import Any, NoReturn
 
+import aiofiles
 from email_validator import EmailNotValidError, validate_email
 from jcs._jcs import JSONEncoder
 from pydantic import HttpUrl, ValidationError
@@ -18,6 +20,13 @@ from pydantic import HttpUrl, ValidationError
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+
+def load_frozen_certs():
+    if getattr(sys, "frozen", False):
+        os.environ["SSL_CERT_FILE"] = os.path.join(sys._MEIPASS, "certifi")
+    else:
+        os.environ["SSL_CERT_FILE"] = certifi.where()
 
 
 async def read_on_disk_hash(filepath: str) -> str:

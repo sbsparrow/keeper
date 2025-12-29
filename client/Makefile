@@ -5,7 +5,8 @@ UNAME := $(shell uname -s)
 VERSION := $(shell uv version --short)
 
 APP_NAME := Keeper
-SRC_FILES := $(shell find src -type f -name '*.py')
+GUI_ENTRY := src/acearchive_keeper/gui.py
+CERTIFI := $(shell uv run python -c "import certifi; print(certifi.where())")
 
 .PHONY: help
 
@@ -24,20 +25,14 @@ help:
 artifacts:
 	mkdir artifacts
 
-build:
-	mkdir build
-
 dist:
 	mkdir dist
 
-# Generate pyinstaller spec
-build/$(APP_NAME).spec: tools/generate_spec.py pyproject.toml | build
-	uv run python tools/generate_spec.py
-
 # macOS builds
-dist/$(APP_NAME).app: build/$(APP_NAME).spec $(SRC_FILES) | dist
+dist/$(APP_NAME).app: $(SRC_FILES) | dist
 	@if [ "$(UNAME)" != "Darwin" ]; then echo "macOS only"; exit 1; fi
-	uv run pyinstaller --clean --noconfirm build/$(APP_NAME).spec
+	uv run pyinstaller --clean --noconfirm --name $(APP_NAME) --windowed --onedir \
+	--add-data "$(CERTIFI):certifi" --icon assets/AceArchiveKeeper.icns $(GUI_ENTRY)
 
 artifacts/$(APP_NAME)-$(VERSION).dmg: dist/$(APP_NAME).app clean-dmg | artifacts
 	mkdir -p build/dmg
@@ -74,4 +69,3 @@ clean-artifacts:
 	rm -rf artifacts
 
 clean: clean-build clean-dist clean-artifacts
-	
