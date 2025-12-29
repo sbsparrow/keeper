@@ -1,0 +1,39 @@
+name: Build Packages
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Client on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest]
+    defaults:
+      run:
+        working-directory: client
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v1
+
+      - name: Install Python
+        run: uv python install
+
+      - name: Install build dependencies
+        run: uv sync --group build
+
+      - name: Build macOS dmg
+        if: matrix.os == 'macos-latest'
+        run: make dmg
+
+      - name: Upload built artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.os }}
+          path: artifacts/**
+          if-no-files-found: error
