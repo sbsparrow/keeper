@@ -37,7 +37,7 @@ class TkLogHandler(logging.Handler):
 
 
 def pick_file():
-    filename = filedialog.askopenfilename(
+    filename = filedialog.asksaveasfilename(
         title="Choose a zip to use for incremental backup",
         initialfile="keeper.zip",
         defaultextension="zip",
