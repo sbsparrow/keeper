@@ -2,10 +2,12 @@ import aiofiles
 import aiofiles.os as aos
 import aiofiles.ospath as apath
 import aiohttp
+import certifi
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 import logging
 import os
+import ssl
 from tempfile import gettempdir
 from typing import Callable, LiteralString, NoReturn
 
@@ -53,14 +55,22 @@ class ArtifactFile():
         """
         chunk_size = 128 * 1024
         bytes_written = 0
+
+        ssl_context = ssl.create_default_context(cafile=certifi.where())
+        connector = aiohttp.TCPConnector(
+            ssl=ssl_context,
+            force_close=True,
+            enable_cleanup_closed=True
+        )
+
         try:
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(connector=connector) as session:
                 async with session.get(self.raw_url) as response:
                     response.raise_for_status()
                     async with aiofiles.open(filepath, 'wb') as fh:
                         async for chunk in response.content.iter_chunked(chunk_size):
                             bytes_written += await fh.write(chunk)
-        except HTTPError as e:
+        except (HTTPError, aiohttp.ClientResponseError) as e:
             logger.error(f"Failed to fetch file. {e.response.status_code} recived from URL: {e.request.url}")
             raise
         return bytes_written
