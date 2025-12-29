@@ -6,7 +6,7 @@ import asyncio
 from concurrent.futures import Future
 import datetime
 import logging
-from multiprocessing import Queue
+from multiprocessing.queues import Queue
 import os
 import sys
 from tempfile import TemporaryDirectory
