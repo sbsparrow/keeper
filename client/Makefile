@@ -6,6 +6,7 @@ VERSION := $(shell uv version --short)
 
 APP_NAME := Keeper
 GUI_ENTRY := src/acearchive_keeper/gui.py
+SRC_FILES := $(shell git ls-files src)
 CERTIFI := $(shell uv run python -c "import certifi; print(certifi.where())")
 
 .PHONY: help
