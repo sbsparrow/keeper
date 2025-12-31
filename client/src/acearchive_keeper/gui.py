@@ -10,11 +10,10 @@ import logging.handlers
 
 from acearchive_keeper.configure import BackupOptionsModel, ConfigFileModel, KeeperModel, get_config_path, read_config, write_config
 from acearchive_keeper.worker import run_gui_worker, ACEARCHIVE_API_URI, ACEARCHIVE_BACKUPS_API_URI, ACEARCHIVE_CHECKSUM_API_URI
-from acearchive_keeper.utils import load_frozen_certs, setup_gui_logger
+from acearchive_keeper.utils import get_resource_path, load_frozen_certs, setup_gui_logger
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-
 
 class TkLogHandler(logging.Handler):
     """
@@ -153,6 +152,7 @@ def main():
     root = tk.Tk()
     root.title("Ace Archive Keeper")
     root.geometry("1280x960")
+    root.iconphoto(True, tk.PhotoImage(file=get_resource_path("assets/keeper_32x32.png")))
 
     root.columnconfigure(0, weight=0)
     root.columnconfigure(1, weight=1)

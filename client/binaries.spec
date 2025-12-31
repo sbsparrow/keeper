@@ -30,7 +30,7 @@ else:
 analysis_kwargs = {
     'pathex': [],
     'binaries': [],
-    'datas': [(certifi.where(), 'certifi')],
+    'datas': [(certifi.where(), 'certifi'), ("assets/keeper_32x32.png", "assets")],
     'hiddenimports': [],
     'hookspath': [],
     'hooksconfig': {},

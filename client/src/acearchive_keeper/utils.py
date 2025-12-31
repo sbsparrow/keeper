@@ -29,6 +29,20 @@ def load_frozen_certs():
         os.environ["SSL_CERT_FILE"] = certifi.where()
 
 
+def get_resource_path(rel_path):
+    """Get path to a resource inside a frozen pyinstaller app.
+
+    :param rel_path: Relative path
+    :type rel_path: str
+    :return: Absolute path
+    :rtype: str
+    """
+    if hasattr(sys, "_MEIPASS"):
+        return os.path.join(sys._MEIPASS, rel_path)
+    else:
+        return os.path.join(os.path.abspath("."), rel_path)
+
+
 async def read_on_disk_hash(filepath: str) -> str:
     """Get the sha256 hash of a file located at a given path.
 
