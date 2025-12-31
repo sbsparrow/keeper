@@ -21,9 +21,11 @@ version = args.version
 platform = args.platform
 
 if platform == 'Darwin':
-    icon = os.path.join("assets", "AceArchiveKeeper.icns")
+    icon = os.path.join("build", "keeper.icns")
 elif platform == "Windows_NT":
-    icon = os.path.join("assets", "Keeper.ico")
+    icon = os.path.join("build", "keeper.ico")
+else:
+    icon = None
 
 analysis_kwargs = {
     'pathex': [],

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Keeper
+Exec=/usr/lib/keeper/Keeper
+Icon=Keeper
+Terminal=false
+Categories=Utility;

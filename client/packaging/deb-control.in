@@ -1,0 +1,5 @@
+Package: keeper
+Version: @VERSION@
+Architecture: amd64
+Maintainer: <sbsparrow@proton.me>
+Description: "A tool for participants to host backups of Ace Archive"
