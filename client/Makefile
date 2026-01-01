@@ -119,7 +119,7 @@ else
 	$(call BAD_BUILD,$@,$(PLATFORM))
 endif
 
-$(BINS) &: $(SRC_FILES) binaries.spec build/keeper.ico | dist
+$(BINS) &: $(SRC_FILES) binaries.spec | dist
 	uv run pyinstaller --noconfirm binaries.spec -- --platform $(PLATFORM) --version $(VERSION)
 
 $(DMGS): dist/$(APP_NAME).app | dist

@@ -23,7 +23,7 @@ platform = args.platform
 if platform == 'Darwin':
     icon = os.path.join("build", "keeper.icns")
 elif platform == "Windows_NT":
-    icon = os.path.join("build", "keeper.ico")
+    icon = os.path.join("assets", "keeper.ico")
 else:
     icon = None
 
