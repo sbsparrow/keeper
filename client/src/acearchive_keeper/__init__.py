@@ -27,27 +27,30 @@ def get_args() -> argparse.Namespace:
     :return: The arguments
     :rtype: argparse.Namespace
     """
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--src-url", type=HttpUrl, default=ACEARCHIVE_API_URI,
-                        help=f"URL of the Ace Archive API to backup. Defaults to {ACEARCHIVE_API_URI}")
-    parser.add_argument("-z", "--archive-zip", type=validate_filepath_arg, default="ace-archive.zip",
-                        help="Path to the archive zip file backup files to. Defaults to ace-archive.zip.")
+    parser = argparse.ArgumentParser(
+        prog="keeper",
+        description="A tool to assist with incremental backup the Ace Archive.",
+        epilog=f"To get started, specify an output file after this command like: '{sys.argv[0]} keeper.zip'")
+    parser.add_argument("archive-zip", type=validate_filepath_arg,
+                        help="""Path to the output backup zip.
+                        If a zip file already exists at that location, performs an incremental backup.
+                        Otherwise performs a full backup.""")
     parser.add_argument("-e", "--email", type=valid_email, required=False,
                         help="""Optionally provide an email address.
                         This will only be used in a disaster recovery event. Not required.""")
     parser.add_argument("-l", "--log-file", type=validate_filepath_arg, required=False,
                         help="Log what's happening to the specified file. Defaults to no log file.")
     parser.add_argument("-v", "--verbose", action="store_true", default=False,
-                        help="""Increase logging verbosity to both the log file and stderr.
-                        Can be specified multiple times for more verbosity. Defaults to logging errors only.""")
+                        help="""Increase logging verbosity to both the log file and stderr.""")
     parser.add_argument("-q", "--quiet", action="store_true", required=False,
                         help="Do not print log messages to stderr.")
     parser.add_argument("--config-file", type=validate_filepath_arg, default=get_config_path(),
-                        help="""Config file to read the keeper ID and optional keeper email address from,
-                        Defaults to 'keeper.conf'. This Should not generally be changed.""")
+                        help="""Override the default config file. Should not generally be used.""")
     parser.add_argument("-g", "--gui", action="store_true", default=False,
-                        help="Start the GUI.")
+                        help="Start the GUI. All other arguments will be ignored.")
     # Hidden arguments for internal testing only.
+    parser.add_argument("--src-url", type=HttpUrl, default=ACEARCHIVE_API_URI,
+                        help=argparse.SUPPRESS)
     parser.add_argument("--backup-api-url", type=HttpUrl, default=ACEARCHIVE_BACKUPS_API_URI,
                         help=argparse.SUPPRESS)
     parser.add_argument("--checksum-api-url", type=HttpUrl, default=ACEARCHIVE_CHECKSUM_API_URI,
